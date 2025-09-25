@@ -1,0 +1,10 @@
+
+
+services:
+  pwani_app:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: pwani_marketing_streamlit
+    ports:
+      - "8002:8002"
