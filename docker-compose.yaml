@@ -7,7 +7,7 @@ services:
       dockerfile: dockerfile   # your Dockerfile
     container_name: pwani_marketing_streamlit
     ports:
-      - "8001:8001"            # map container port to host
+      - "8002:8002"            # map container port to host
     volumes:
                 # mount project folder for live reload
         # mount logs folder
@@ -15,4 +15,4 @@ services:
       - ./storage:/app/storage
 
 
-    command: streamlit run app.py --server.port 8003 --server.address 0.0.0.0
+    command: streamlit run app.py --server.port 8002 --server.address 0.0.0.0
