@@ -3,3 +3,5 @@ streamlit
 httpx
 pandas 
 numpy
+sqlmodel
+pymysql

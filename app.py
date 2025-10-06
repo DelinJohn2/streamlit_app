@@ -1,698 +1,1907 @@
 import streamlit as st
 import pandas as pd
-from data_fetcher import DataReaderMt,DataReaderGT,load_province_geojson,load_county_geojson,aggregate_brand_data_by_geography
-from utils import slugify,pick_index,to_key
+from data_fetcher import DataReaderMt,DataReaderGT
+from utils import slugify
 import plotly.graph_objects as go
 from services import fetch_report,run_backend_sync
 import json
 import base64
 
-PROVINCE_GEOJSON_PATH = "storage/kenya_territories_lake.geojson"
-COUNTY_GEOJSON_PATH = "storage/kenya.geojson"
-PROV_GJ = load_province_geojson(PROVINCE_GEOJSON_PATH)  
-COUNTY_GJ = load_county_geojson(COUNTY_GEOJSON_PATH)
-MAP_CENTER = {"lat": -0.5, "lon": 36.5}
-MAP_ZOOM = 5.5
 
-gt_reader = DataReaderGT()
-mt_reader = DataReaderMt()
 
-@st.cache_data(show_spinner=True)
-def load_rtm_data():
-    gt_fetcher = DataReaderGT()  
-    rtm_data = gt_fetcher.read_rtm_data()
-    return rtm_data
-
-@st.cache_data(show_spinner=False)
-def load_brand_data(data):
-    """Load brand data with expected columns: brandName, category, market, marketShare, competitorStrength, whiteSpaceScore"""
-    if data=='MT':
-        df = mt_reader.read_mt_pwani_data()
-    elif data=="GT":
-        df = gt_reader.read_gt_pwani_data()    
-    required_cols = ['brandName', 'category', 'market', 'marketShare', 'competitorStrength', 'whiteSpaceScore']
-    missing = [c for c in required_cols if c not in df.columns]
-    
-    if missing:
-        st.error(f"Brand data is missing required columns: {', '.join(missing)}")
-        st.error(f"Available columns: {list(df.columns)}")
-        st.stop()
-    
-    # Clean and convert data types
-    for c in ['brandName', 'category', 'market']:
-        df[c] = df[c].astype(str).str.strip()
-    
-    for c in ['marketShare', 'competitorStrength', 'whiteSpaceScore']:
-        df[c] = pd.to_numeric(df[c], errors='coerce')
-    
-    return df
-
-@st.cache_data(show_spinner=True)
-def load_mt_data():
-    mt_fetcher = DataReaderMt()
-    mt_data = mt_fetcher.read_mt_pwani_data()
-    mt_data['brandName'] = mt_data['brandName'].str.strip()
-    mt_data['market'] = mt_data['market'].str.strip()
-    mt_data['category'] = mt_data['category'].str.strip()
-    return mt_data
-
-@st.cache_data(show_spinner=True)
-def load_gt_rtm_data():
-    gt_fetcher = DataReaderGT()
-    gt_data = gt_fetcher.read_gt_pwani_data()
-    rtm_data = gt_fetcher.read_rtm_data()
-    return gt_data, rtm_data
-
-st.set_page_config(
-    page_title="Market Discovery Dashboard (Choropleth)",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# -------------------- CSS --------------------
-st.markdown("""
-<style>
-    .metric-container {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem; border-radius: 10px; color: white; text-align: center; margin: 0.5rem 0;
+def check_credentials(username, password):
+    """
+    Validate user credentials.
+    Replace this with your actual authentication logic (database, API, etc.)
+    """
+    valid_users = {
+        'admin': 'admin123',
+        'user': 'password',
+        'pwani': 'pwani2024'
     }
-    .blue-metric { background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%); }
-    .purple-metric { background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%); }
-    .orange-metric { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
-    .green-metric { background: linear-gradient(135deg, #10B981 0%, #059669 100%); }
-    .teal-metric { background: linear-gradient(135deg, #14B8A6 0%, #0D9488 100%); }
-    .brand-card {
-        background: white; padding: 1rem; border-radius: 8px; border-left: 4px solid #10B981;
-        margin: 0.5rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .poor-brand-card { border-left-color: #EF4444; }
-    .distributor-card { background: #F0FDF4; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border: 1px solid #BBF7D0; }
+    return username in valid_users and valid_users[username] == password
+
+def login_page():
+    """Display login form with modern design"""
+    st.set_page_config(
+        page_title="Login - Market Discovery",
+        page_icon="watermark.png",
+        layout="wide"
+    )
     
-
-.logo-container {
-    display: flex;
-    justify-content: space-between; /* left logo to left, right logo to right */
-    align-items: center;
-    margin: 20px 20px;
-}
-
-.logo-container img {
-    height: 150px;    /* fix height */
-    width: auto;     /* keep aspect ratio */
-    object-fit: contain;
-}
-
-
-</style>
-""", unsafe_allow_html=True)
-
-# -------------------- Load and Display Logos --------------------
-try:
-    with open("pwani.jpeg", "rb") as f:
-        left_logo_data = base64.b64encode(f.read()).decode()
+   
+    try:
+        with open("pwani.jpeg", "rb") as f:
+            left_logo_data = base64.b64encode(f.read()).decode()
+        
+        with open("algo.jpeg", "rb") as f:
+            right_logo_data = base64.b64encode(f.read()).decode()
+        
+        st.markdown(f"""
+            <style>
+            .logo-container {{
+                padding: 40px 20px 20px 20px;
+                position: fixed;
+                top: 0;
+                left: 0;
+                z-index: 999;
+                background: white;   
+                display: flex;
+                align-items: center;
+                gap: 40px;
+                border-bottom: 1px solid #E5E7EB;
+                width: 100%;
+                justify-content: space-between;
+            }}
+            </style>
+            
+            <div class="logo-container">
+                <img src="data:image/jpeg;base64,{left_logo_data}" alt="Pwani Logo" style="height:60px;width:auto;">
+                <img src="data:image/jpeg;base64,{right_logo_data}" alt="Algo Logo" style="height:50px;width:auto;">
+            </div>
+        """, unsafe_allow_html=True)
+        
+    except FileNotFoundError:
+        pass
     
-    with open("algo.jpeg", "rb") as f:
-        right_logo_data = base64.b64encode(f.read()).decode()
-    
-    st.markdown(f"""
-  <div class="logo-container">
-    <img src="data:image/jpeg;base64,{left_logo_data}" alt="Pwani Logo">
-    <img src="data:image/jpeg;base64,{right_logo_data}" alt="Algo Logo">
-</div>
-
+    # Custom CSS for modern login page
+    st.markdown("""
+        <style>
+        /* Remove default padding */
+        .main .block-container {
+            padding-top: 120px;
+            padding-bottom: 2rem;
+            max-width: 100%;
+        }
+        
+        /* Login card styling */
+        .login-card {
+            background: white;
+            padding: 3rem 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #E5E7EB;
+        }
+        
+        /* Input field styling */
+        .stTextInput input {
+            border-radius: 8px;
+            border: 1px solid #D1D5DB;
+            padding: 0.75rem;
+            font-size: 1rem;
+        }
+        
+        .stTextInput input:focus {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* Button styling */
+        .stButton button {
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        
+        .stButton button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        /* Welcome section */
+        .welcome-section {
+            padding: 3rem 2rem;
+        }
+        
+        .welcome-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1F2937;
+            margin-bottom: 1rem;
+        }
+        
+        .welcome-subtitle {
+            font-size: 1.125rem;
+            color: #6B7280;
+            line-height: 1.75;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 0;
+            color: #374151;
+        }
+        
+        .feature-icon {
+            font-size: 1.5rem;
+        }
+        </style>
     """, unsafe_allow_html=True)
     
-except FileNotFoundError:
-    pass
-
-# -------------------- App State --------------------
-if "page" not in st.session_state:
-    st.session_state.page = "summary"
-if "selected_brand" not in st.session_state:
-    st.session_state.selected_brand = None
-if "prefilters" not in st.session_state:
-    st.session_state.prefilters = None
-
-# -------------------- Sidebar Navigation --------------------
-st.sidebar.title("🎯 Navigation")
-data = st.sidebar.selectbox(options=("MT","GT"), label="Select the data", key="sidebar_data_selector")
-
-if st.sidebar.button("📊 Summary Dashboard", use_container_width=True):
-    st.session_state.page = "summary"
-    st.session_state.selected_brand = None
-    st.session_state.prefilters = None
-
-if st.sidebar.button("🗺️ Market Discovery", use_container_width=True):
-    st.session_state.page = "detail"
-
-if st.sidebar.button("📄 Reports", use_container_width=True):
-    st.session_state.page = "reports"
-
-if st.sidebar.button("📝 Content Generation", use_container_width=True):
-    st.session_state.page = "content_generation"  
-
-BRAND_DF = load_brand_data(data)
-
-# -------------------- Summary Page --------------------
-if st.session_state.page == "summary":
-    st.title("Market Discovery Summary")
-    BRAND_DF = load_brand_data(data)
-    PROV_AGG_DATA = aggregate_brand_data_by_geography(BRAND_DF, 'province')
-    COUNTY_AGG_DATA = aggregate_brand_data_by_geography(BRAND_DF, 'county')
-    st.markdown("**Kenya Market Analysis Dashboard**")
-
-    # -------- KPIs from Brand Data -----
+    # Two-column layout
+    col1, col2, col3 = st.columns([1.5, 0.8, 1.5])
     
-    st.subheader("Key Performance Indicators")
-    st.write("Last Update 12 Dec 2024")
-    agg_data = BRAND_DF.groupby(['brandName','category','market']).agg({
-        'whiteSpaceScore':'mean',
-        'marketShare':'sum',
-        'competitorStrength':'sum'
-    }).reset_index()
-    
-    avg_ws_score = agg_data['whiteSpaceScore'].mean()
-    avg_market_share = agg_data['marketShare'].mean()  
-    avg_competitor_strength = agg_data['competitorStrength'].mean()
-    total_brands = len(agg_data[['brandName','category']].drop_duplicates())
-    total_markets = len(agg_data['market'].unique())
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(f"""
-        <div class="metric-container blue-metric">
-            <h3>Avg White Space Score</h3>
-            <h1>{avg_ws_score:.1f}</h1>
-            <p>Across {total_brands} brands</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"""
-        <div class="metric-container purple-metric">
-            <h3>Avg Market Share</h3>
-            <h1>{avg_market_share:.1f}%</h1>
-            <p>Across {total_markets} markets</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with c3:
-        if data=="MT":
-            avg_competitor_strength=24.8
-        else:
-            avg_competitor_strength=14.2    
-
-        st.markdown(f"""
-        <div class="metric-container orange-metric">
-            <h3>Avg Competitor Strength</h3>
-            <h1>{avg_competitor_strength:.1f}</h1>
-            <p>Market competition index</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # -------- Geographic Analysis --------
-    st.subheader("Geographic Analysis")
-
-    col1, col2 = st.columns(2)
-
+    # Left side - Welcome section
     with col1:
-        st.markdown("**Kenya Brand Performance Data**")
-        
-        prov_keys = [f["properties"]["PROV_KEY"] for f in PROV_GJ["features"]]
-        plot_df = pd.DataFrame({"GEO_KEY": prov_keys})
-        plot_df = plot_df.merge(PROV_AGG_DATA, on="GEO_KEY", how="left")
-        
-        fig_prov = go.Figure(go.Choroplethmapbox(
-            geojson=PROV_GJ,
-            locations=plot_df["GEO_KEY"],
-            z=plot_df["whiteSpaceScore"],
-            featureidkey="properties.PROV_KEY",
-            colorscale="Blues",
-            marker_line_width=0.5,
-            marker_line_color="rgba(0,0,0,0.4)",
-            colorbar=dict(title="White Space Score"),
-            hovertemplate="<b>%{location}</b><br>White Space Score: %{z:.1f}<extra></extra>"
-        ))
-        
-        fig_prov.update_layout(
-            mapbox_style="open-street-map",
-            mapbox_center=MAP_CENTER,
-            mapbox_zoom=MAP_ZOOM,
-            height=400,
-            margin=dict(r=0, t=0, l=0, b=0)
-        )
-        st.plotly_chart(fig_prov, use_container_width=True)
 
+        st.markdown('</div></div>', unsafe_allow_html=True)
+    
+    # Right side - Login form
     with col2:
-        st.markdown("**Market Share by County**")
+
+        st.markdown('### Sign In')
         
-        county_keys = [f["properties"]["COUNTY_KEY"] for f in COUNTY_GJ["features"]]
-        plot_df_county = pd.DataFrame({"GEO_KEY": county_keys})
-        plot_df_county = plot_df_county.merge(COUNTY_AGG_DATA, on="GEO_KEY", how="left")
-        
-        fig_county = go.Figure(go.Choroplethmapbox(
-            geojson=COUNTY_GJ,
-            locations=plot_df_county["GEO_KEY"],
-            z=plot_df_county["marketShare"],
-            featureidkey="properties.COUNTY_KEY", 
-            colorscale="Viridis",
-            marker_line_width=0.5,
-            marker_line_color="rgba(0,0,0,0.4)",
-            colorbar=dict(title="Market Share %"),
-            hovertemplate="<b>%{location}</b><br>Market Share: %{z:.1f}%<extra></extra>"
-        ))
-        
-        fig_county.update_layout(
-            mapbox_style="open-street-map",
-            mapbox_center=MAP_CENTER,
-            mapbox_zoom=MAP_ZOOM,
-            height=400,
-            margin=dict(r=0, t=0, l=0, b=0)
+        username = st.text_input(
+            'Username',
+            key='username_input',
+            placeholder='Enter your username',
+            label_visibility='visible'
         )
-        st.plotly_chart(fig_county, use_container_width=True)
-
-    st.markdown("---")
-
-    # -------- Brand Performance Analysis --------
-    st.subheader("Brand Performance Analysis")
-
-    top_brands = agg_data.nsmallest(5, 'whiteSpaceScore').sort_values('whiteSpaceScore', ascending=True)
-    bottom_brands = agg_data.nlargest(5, 'whiteSpaceScore').sort_values('whiteSpaceScore', ascending=False)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**🏆 Top Performing Brands**")
-        for idx, row in top_brands.iterrows():
-            unique_key = f"top_{idx}_{slugify(row['brandName'])}_{slugify(row['market'])}"
-            
-            if st.button(f"{row['brandName']} - Score: {row['whiteSpaceScore']:.1f}", 
-                        key=unique_key):
-                st.session_state.selected_brand = {
-                    "name": row["brandName"], 
-                    "score": row["whiteSpaceScore"]
-                }
-                st.session_state.prefilters = {
-                    "brandName": row["brandName"],
-                    "category": row["category"],
-                    "market": row["market"]
-                }
-                st.session_state.page = "detail"
-                st.rerun()
-                
-            st.markdown(f"""
-            <div class="brand-card">
-                <strong>{row['brandName']} {row['category']}</strong> - <em>{row['market']}</em><br>
-                Category: {row['category']}<br>
-                White Space Score: <strong>{row['whiteSpaceScore']:.1f}</strong> | 
-                Market Share: <strong>{row['marketShare']:.1f}%</strong>
-                <div style="background: #E5E7EB; height: 8px; border-radius: 4px; margin-top: 8px;">
-                    <div style="background: linear-gradient(to right, #10B981, #059669);
-                                height: 8px; width: {max(0,min(100,100-float(row['whiteSpaceScore'])))}%; border-radius: 4px;"></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("**⚠️ Underperforming Brands**") 
-        for idx, row in bottom_brands.iterrows():
-            unique_key = f"bottom_{idx}_{slugify(row['brandName'])}_{slugify(row['market'])}"
-            
-            if st.button(f"{row['brandName']} - Score: {row['whiteSpaceScore']:.1f}",
-                        key=unique_key):
-                st.session_state.selected_brand = {
-                    "name": row["brandName"],
-                    "score": row["whiteSpaceScore"] 
-                }
-                st.session_state.prefilters = {
-                    "brandName": row["brandName"],
-                    "category": row["category"], 
-                    "market": row["market"]
-                }
-                st.session_state.page = "detail"
-                st.rerun()
-                
-            st.markdown(f"""
-            <div class="brand-card poor-brand-card">
-                <strong>{row['brandName']} {row['category']}</strong> - <em>{row['market']}</em><br>
-                Category: {row['category']}<br>
-                White Space Score: <strong>{row['whiteSpaceScore']:.1f}</strong> |
-                Market Share: <strong>{row['marketShare']:.1f}%</strong>
-                <div style="background: #E5E7EB; height: 8px; border-radius: 4px; margin-top: 8px;">
-                    <div style="background: linear-gradient(to right, #EF4444, #DC2626);
-                                height: 8px; width: {max(0,min(100,100-float(row['whiteSpaceScore'])))}%; border-radius: 4px;"></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-elif st.session_state.page == "detail":
-    st.sidebar.markdown("---")
-    st.sidebar.header("🔍 Filters & Controls")
-    
-    PROV_AGG_DATA = aggregate_brand_data_by_geography(BRAND_DF, 'province')
-    COUNTY_AGG_DATA = aggregate_brand_data_by_geography(BRAND_DF, 'county')
-
-    all_categories = ["All Categories"] + sorted(BRAND_DF["category"].dropna().unique().tolist())
-    all_brands = ["All Brands"] + sorted(BRAND_DF["brandName"].dropna().unique().tolist())
-    all_markets = ["All Markets"] + sorted(BRAND_DF["market"].dropna().unique().tolist())
-
-    pf = st.session_state.prefilters or {}
-    
-    cat_idx = pick_index(all_categories, pf.get("category"), 0)
-    brand_idx = pick_index(all_brands, pf.get("brandName"), 0)
-    market_idx = pick_index(all_markets, pf.get("market"), 0)
-
-    category = st.sidebar.selectbox("Category", all_categories, index=cat_idx)
-    brand = st.sidebar.selectbox("Brand", all_brands, index=brand_idx)
-    market = st.sidebar.selectbox("Market", all_markets, index=market_idx)
-
-    cback, ctitle = st.columns([1, 8])
-    with cback:
-        if st.button("← Back", use_container_width=True):
-            st.session_state.page = "summary"
-            st.rerun()
-    with ctitle:
-        st.title("🗺️ Market Discovery Dashboard")
-        if st.session_state.selected_brand:
-            sb = st.session_state.selected_brand
-            st.info(f"🎯 Analyzing: {sb.get('name','')} - Score: {sb.get('score','')}")
-
-    filtered_df = BRAND_DF.copy()
-    if category != "All Categories":
-        filtered_df = filtered_df[filtered_df["category"] == category]
-    if brand != "All Brands":
-        filtered_df = filtered_df[filtered_df["brandName"] == brand]  
-    if market != "All Markets":
-        filtered_df = filtered_df[filtered_df["market"] == market]
-
-    st.subheader("Filtered Performance Indicators")
-
-    if not filtered_df.empty:
-        ws_mean = filtered_df['whiteSpaceScore'].mean()
-        ms_mean = filtered_df['marketShare'].mean()
-        cs_mean = filtered_df['competitorStrength'].mean()
-        brand_count = len(filtered_df['brandName'].unique())
-        market_count = len(filtered_df['market'].unique())
-    else:
-        ws_mean = ms_mean = cs_mean = brand_count = market_count = 0
-
-    kc1, kc2, kc3, kc4, kc5 = st.columns(5)
-    with kc1:
-        st.markdown(f"""<div class="metric-container blue-metric"><h4>White Space Score</h4><h2>{ws_mean:.1f}</h2></div>""", unsafe_allow_html=True)
-    with kc2:
-        st.markdown(f"""<div class="metric-container purple-metric"><h4>Market Share</h4><h2>{ms_mean:.1f}%</h2></div>""", unsafe_allow_html=True)
-    with kc3:
-        st.markdown(f"""<div class="metric-container orange-metric"><h4>Competitor Strength</h4><h2>{cs_mean:.1f}</h2></div>""", unsafe_allow_html=True)
-    with kc4:
-        st.markdown(f"""<div class="metric-container green-metric"><h4>Brands</h4><h2>{brand_count}</h2></div>""", unsafe_allow_html=True)
-    with kc5:
-        st.markdown(f"""<div class="metric-container teal-metric"><h4>Markets</h4><h2>{market_count}</h2></div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    st.subheader("Geographic Performance")
-    
-    left, right = st.columns(2)
-    
-    with left:
-        st.markdown("**White Space Score Distribution**")
         
-        if not filtered_df.empty:
-            market_agg = filtered_df.groupby('market').agg({
-                'whiteSpaceScore': 'mean',
-                'marketShare': 'mean',
-                'competitorStrength': 'mean'
-            }).reset_index()
-            market_agg['GEO_KEY'] = market_agg['market'].map(to_key)
+        password = st.text_input(
+            'Password',
+            key='password_input',
+            type='password',
+            placeholder='Enter your password',
+            label_visibility='visible'
+        )
+        
+        st.markdown('<div style="margin-top: 1.5rem;">', unsafe_allow_html=True)
+        
+        if st.button('Sign In', type='primary', use_container_width=True):
+            if not username or not password:
+                st.error('⚠️ Please enter both username and password')
+            elif check_credentials(username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success('✅ Login successful! Redirecting...')
+                st.rerun()
+            else:
+                st.error('❌ Invalid username or password')
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        # st.markdown('</div></div>', unsafe_allow_html=True)
+    with col3:
+        st.markdown('</div></div>', unsafe_allow_html=True)
+        
+        
+
+        
+def logout():
+    """Handle logout"""
+    st.session_state.logged_in = False
+    st.session_state.username = ''
+    st.rerun()
+
+
+def main_app():
+    
+
+    MAP_CENTER = {"lat": -0.5, "lon": 36.5}
+    MAP_ZOOM = 4
+
+    gt_reader = DataReaderGT()
+    mt_reader = DataReaderMt()
+
+    @st.cache_data(show_spinner=True)
+    def load_rtm_data():
+        gt_fetcher = DataReaderGT()  
+        rtm_data = gt_fetcher.read_rtm_data()
+        return rtm_data
+
+    @st.cache_data(show_spinner=False)
+    def load_brand_data(data):
+        """Load brand data with expected columns: brandName, category, market, marketShare, competitorStrength, whiteSpaceScore"""
+        if data=='MT':
+            df = mt_reader.read_mt_pwani_data()
+        elif data=="GT":
+            df = gt_reader.read_gt_pwani_data()    
+    
+        
+        return df
+    @st.cache_data(show_spinner=False)
+    def load_competitor_data(data):
+        """Load brand data with expected columns: brandName, category, market, marketShare, competitorStrength, whiteSpaceScore"""
+        if data=='MT':
+            df = mt_reader.read_mt_competitor_data()
+        elif data=="GT":
+            df = gt_reader.read_gt_competitor_data()    
+
+        
+        return df
+
+    @st.cache_data(show_spinner=True)
+    def load_gt_data():
+        gt_fetcher = DataReaderGT()
+        gt_data = gt_fetcher.read_gt_pwani_data()
+        
+        return gt_data
+    
+
+    def markdown_container(color,container_name,score,dist_factor,span):  
+        mk=st.markdown(f"""
+            <div class="metric-container {color}-metric" >
+                <h3>{container_name}</h3>
+                <h1>{score:.1f}</h1>
+                <p>Across {dist_factor} brands</p>
+                <span class = "tooltip-text">
+                        {span}
+                </span>
+            </div>
+            """, unsafe_allow_html=True) 
+        return mk 
+    st.set_page_config(
+        page_title="Market Discovery Dashboard",
+        page_icon="watermark.png",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    # -------------------- CSS --------------------
+    st.markdown("""
+    <style>
+    .css-18e3th9 {
+        padding: 0rem !important;
+        margin: 0rem !important;
+    }
+
+    /* Remove padding and margin from the sidebar */
+    .css-1d391kg {
+        padding: 0rem !important;
+        margin: 0rem !important;
+    }
+
+    /* Remove spacing from all divs, headers, sections globally */
+    div, section, header, main {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+
+    [data-testid="stSidebar"] [data-baseweb="select"] > div {
+        padding: 10px !important;
+        text-align: center;
+        justify-content: center;
+    }
+
+        .metric-container {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1rem; border-radius: 10px; color: white; text-align: center; margin: 0.5rem 0;
+        }
+        .metric-container {
+            cursor: pointer;
+        }
+
+        .metric-container .tooltip-text {
+            visibility: hidden;
+            width: 220px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1;
+            bottom: 110%; /* Position above the div */
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .metric-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        .blue-metric { background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%); }
+        .purple-metric { background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%); }
+        .orange-metric { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
+        .green-metric { background: linear-gradient(135deg, #10B981 0%, #059669 100%); }
+        .teal-metric { background: linear-gradient(135deg, #14B8A6 0%, #0D9488 100%); }
+        .brand-card {
+            background: white; padding: 1rem; border-radius: 8px; border-left: 4px solid #10B981;
+            margin: 0.5rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .poor-brand-card { border-left-color: #EF4444; }
+        .distributor-card { background: #F0FDF4; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border: 1px solid #BBF7D0; }
+        
+
+    .logo-container {
+        display: flex;
+        justify-content: space-between; /* left logo to left, right logo to right */
+        align-items: center;
+        margin: 20px 20px;
+    }
+
+    .logo-container img {
+        height: 150px;    /* fix height */
+        width: auto;     /* keep aspect ratio */
+        object-fit: contain;
+    }
+
+
+    </>
+    """, unsafe_allow_html=True)
+
+    # -------------------- Load and Display Logos --------------------
+    try:
+        with open("pwani.jpeg", "rb") as f:
+            left_logo_data = base64.b64encode(f.read()).decode()
+        
+        with open("algo.jpeg", "rb") as f:
+            right_logo_data = base64.b64encode(f.read()).decode()
+        
+        st.markdown(f"""
+                <style>
+                .logo-container {{
+                padding:90px 10px 0px 30px !important;
+                position:fixed;
+                top:-35px;
+                z-index: 999;
+                width: 100%;
+                background: white;   
+                display: flex;
+                justify-content: flex-start;
+                gap: 60vw; /* optional space between logos if needed */
+                border-bottom: 2px solid #E5E7EB;
+                }}
+                </style>
+                
+    <div class="logo-container">
+        <img src="data:image/jpeg;base64,{left_logo_data}" alt="Pwani Logo" style="height:100px;width:auto;">
+        <img src="data:image/jpeg;base64,{right_logo_data}" alt="Algo Logo" style="height:80px;width:auto;">
+    </div>
+
+        """, unsafe_allow_html=True)
+        
+    except FileNotFoundError:
+        pass
+
+    # -------------------- App State --------------------
+    if "page" not in st.session_state:
+        st.session_state.page = "summary"
+    if "selected_brand" not in st.session_state:
+        st.session_state.selected_brand = None
+    if "prefilters" not in st.session_state:
+        st.session_state.prefilters = None
+
+    # -------------------- Sidebar Navigation --------------------
+    st.sidebar.title("Navigation")
+    data = st.sidebar.selectbox(options=("MT","GT"), label="Select the data", key="sidebar_data_selector")
+
+    if st.sidebar.button("Summary Dashboard", use_container_width=True):
+        st.session_state.page = "summary"
+        st.session_state.selected_brand = None
+        st.session_state.prefilters = None
+
+    if st.sidebar.button("Market Discovery", use_container_width=True):
+        st.session_state.page = "detail"
+
+    if st.sidebar.button("Content Generation", use_container_width=True):
+        st.session_state.page = "content_generation"  
+        
+    if st.sidebar.button("Logout", use_container_width=True):
+        logout()
+
+
+    rtm_data=load_rtm_data()
+    BRAND_DF = load_brand_data(data)
+    COMP_DF=load_competitor_data(data)
+
+    # -------------------- Summary Page --------------------
+    if st.session_state.page == "summary":
+        st.markdown(
+            """
+            <style>
+            .block-container {
+                padding: 120px 40px !important;
+            }
+            .main [data-testid="stTitle"] {
+                margin-top: 0 !important;
+                margin-bottom: 6px !important;
+                padding-bottom: 0 !important;
+            }
             
-            prov_keys = [f["properties"]["PROV_KEY"] for f in PROV_GJ["features"]]
-            plot_df = pd.DataFrame({"GEO_KEY": prov_keys})
-            plot_df = plot_df.merge(market_agg, on="GEO_KEY", how="left")
+            .main [data-testid="stTitle"] h1 {
+                margin-top: 0 !important;
+                margin-bottom: 6px !important;
+                padding-bottom: 0 !important;
+            }
+
+            .main [data-testid="stSubheader"] {
+                margin-top: 2px !important;
+                margin-bottom: 2px !important;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+            }
             
-            fig_filtered = go.Figure(go.Choroplethmapbox(
-                geojson=PROV_GJ,
-                locations=plot_df["GEO_KEY"],
-                z=plot_df["whiteSpaceScore"],
-                featureidkey="properties.PROV_KEY",
-                colorscale="RdYlBu_r",
+            .main [data-testid="stSubheader"] h2 {
+                margin-top: 2px !important;
+                margin-bottom: 2px !important;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+            }
+          
+            </style>
+            <div class="summary-container">
+            """,
+            unsafe_allow_html=True
+        )
+     
+        st.title("Market Discovery Summary")
+
+
+        
+        st.subheader("Key Performance Indicators")
+        date=BRAND_DF["date"].max().strftime("%b %Y")
+        st.write(f"Last Update {date}")
+        agg_data = BRAND_DF.groupby(['brandName','category','market']).agg({
+            'whiteSpaceScore':'mean',
+            'marketShare':'sum',
+            'competitorStrength':'sum'
+        }).reset_index()
+        
+        avg_ws_score = agg_data['whiteSpaceScore'].mean()
+        total_brands = len(agg_data[['brandName','category']].drop_duplicates())
+        total_markets = len(agg_data['market'].unique())
+       
+        if data=="MT":
+            
+            grouped_df = COMP_DF.groupby('brandName')['totalQuantity'].sum().reset_index()
+            top_3_sales = grouped_df['totalQuantity'].sort_values(ascending=False).head(3).sum()
+            cci = (top_3_sales / grouped_df['totalQuantity'].sum()) * 100
+            tMshare_p = BRAND_DF['totalQuantity'].sum()
+            tMshare_c= COMP_DF['totalQuantity'].sum()
+            market_share=(tMshare_p/(tMshare_c+tMshare_c))*100
+
+
+        elif data =="GT":
+            grouped_df = COMP_DF.groupby('brandName')['brandTotalVolume'].sum().reset_index()
+            top_3_sales = grouped_df['brandTotalVolume'].sort_values(ascending=False).head(3).sum()
+            cci = (top_3_sales / grouped_df['brandTotalVolume'].sum()) * 100
+            tMshare_p = BRAND_DF['brandTotalVolume'].sum()
+            tMshare_c= COMP_DF['brandTotalVolume'].sum()
+            market_share=(tMshare_p/(tMshare_c+tMshare_c))*100
+                
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            span_message="Score (out of 100) showing overall untapped market potential — higher means more growth opportunity."
+            markdown_container('blue','White Space Score',avg_ws_score,total_brands,span_message)
+
+        with c2:
+            span_message="Percentage of total market sales captured by your brand."
+            markdown_container('purple','Market Share',market_share.round(1),total_markets,span_message)
+        
+        with c3:
+            span_message="% of top 3 competitors’ sales. Lower (≤50%) = fragmented market, more opportunity."
+            markdown_container('orange',"Market Competitor Index",round(cci,2),"", span_message)
+
+        st.markdown("---")
+
+        # -------- Geographic Analysis --------
+        st.subheader("Geographic Analysis")
+
+        col1, col2 = st.columns(2)
+
+
+
+        with col1:
+      
+            st.markdown("**Kenya Brand Performance Data**")
+            if data=='GT':
+                with open("storage/kenya_territories_lake.geojson") as f:
+                    geo = json.load(f)
+                feautre_id="properties.TERRITORY"
+          
+            elif data =="MT":
+                with open("storage/kenya.geojson") as f:
+                    geo= json.load(f)
+                feautre_id="properties.COUNTY_NAM"
+            metric = BRAND_DF.groupby("market", as_index=False).agg({'whiteSpaceScore': 'mean','marketShare': 'mean'}).reset_index()
+
+
+            metrics = {
+                "WSS": list(metric["whiteSpaceScore"].unique()),
+                "MS": list(metric["marketShare"])
+            }
+
+            colorbar_titles = {
+            "WSS": "WSS",
+            "MS": "MS"
+            }
+            default_metric = "WSS"
+    
+
+            fig_prov = go.Figure(go.Choroplethmapbox(
+                geojson=geo,
+                featureidkey=feautre_id,
+                locations=metric["market"],
+                z=metrics[default_metric],
+                colorscale="Viridis",
+                marker_opacity=0.7,
                 marker_line_width=0.5,
-                colorbar=dict(title="White Space Score"),
-                hovertemplate="<b>%{location}</b><br>White Space Score: %{z:.1f}<extra></extra>"
+                text=metric["market"],  # hover name
+                hovertemplate="<b>%{text}</b><br>Score: %{z}<extra></extra>",
+                colorbar=dict(title=colorbar_titles[default_metric])
             ))
-        else:
-            fig_filtered = go.Figure(go.Choroplethmapbox(
-                geojson=PROV_GJ,
-                locations=[],
-                z=[],
-                featureidkey="properties.PROV_KEY",
-                colorscale="RdYlBu_r"
-            ))
-        
-        fig_filtered.update_layout(
-            mapbox_style="open-street-map",
-            mapbox_center=MAP_CENTER,
-            mapbox_zoom=MAP_ZOOM,
-            height=400,
-            margin=dict(r=0, t=0, l=0, b=0)
-        )
-        st.plotly_chart(fig_filtered, use_container_width=True)
 
-    with right:
-        st.markdown("**Performance Metrics by Market**")
-        
-        if not filtered_df.empty:
-            market_summary = filtered_df.groupby('market').agg({
-                'whiteSpaceScore': 'mean',
-                'marketShare': 'mean', 
-                'competitorStrength': 'mean'
-            }).reset_index()
-            
-            fig_metrics = go.Figure()
-            fig_metrics.add_trace(go.Bar(
-                name='White Space Score',
-                x=market_summary['market'],
-                y=market_summary['whiteSpaceScore'],
-                marker_color='lightblue'
-            ))
-            
-            fig_metrics.update_layout(
-                title="Average White Space Score by Market",
+            fig_prov.update_layout(
+                mapbox_style="open-street-map",
+                mapbox_center=MAP_CENTER,
+                mapbox_zoom=MAP_ZOOM,
                 height=400,
-                margin=dict(r=0, t=30, l=0, b=0)
+                margin=dict(r=0, t=0, l=0, b=0)
             )
-            st.plotly_chart(fig_metrics, use_container_width=True)
-        else:
-            st.info("No data available for the selected filters.")
 
-    st.markdown("---")
+            fig_json = fig_prov.to_json()
 
-    st.subheader("Detailed Brand Data")
+
+            html = f"""
+            <style>
+            .wrap {{
+                position: relative;
+                height: 400px;
+                border-radius: 16px;
+                overflow: hidden;
+                background: #eef2f7;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 12px 28px rgba(0,0,0,.08);
+            }}
+            #plotA {{
+                position: absolute;
+                inset: 0;
+            }}
+            .fab {{
+                position: absolute;
+                top: 25px;
+                right: 12px;
+                z-index: 10;
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                border: none;
+                background: #fff;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                font: 700 18px/44px system-ui, sans-serif;
+                cursor: pointer;
+            }}
+            .menu {{
+                position: absolute;
+                top: 60px;
+                right: 12px;
+                z-index: 11;
+                width: 180px;
+                background: #fff;
+                border-radius: 12px;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                border: 1px solid #eef0f4;
+                display: none;
+            }}
+            .menu.open {{
+                display: block;
+            }}
+            .menu div {{
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #e5e5e5;
+            }}
+            .menu div:last-child {{
+                border-bottom: none;
+            }}
+            .menu div:hover {{
+                background: #f3f6fb;
+            }}
+        .item{{ padding:10px 14px; cursor:pointer; font:500 14px/1.2 system-ui, sans-serif;}} .item:hover{{ background:#f3f6fb; }}
+
+            </style>
+
+            <div class="wrap">
+                <div id="plotA"></div>
+                <button id="fabA" class="fab">☰</button>
+                <div id="menuA" class="menu">
+                    <div class="item" data-metric="WSS">White Space Score</div>
+                    <div class="item" data-metric="MS">Market Share</div>
+                </div>
+            </div>
+
+            <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+            <script>
+                const fig = {fig_json};
+                const METRICS = {json.dumps(metrics)};
+                const COLORBARS = {json.dumps(colorbar_titles)};
+                const div = document.getElementById("plotA");
+                Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
+
+                const fab = document.getElementById("fabA");
+                const menu = document.getElementById("menuA");
+
+                fab.addEventListener("click", () => {{
+                    menu.classList.toggle("open");
+                }});
+
+                document.querySelectorAll(".item").forEach(el => {{
+                    el.addEventListener("click", () => {{
+                        const metric = el.dataset.metric;
+                        Plotly.restyle(div, {{z: [METRICS[metric]]}}, [0]);
+                        Plotly.restyle(div, {{
+                                z: [METRICS[metric]],
+                'colorbar.title.text': COLORBARS[metric]
+                        }}, [0]);
+                        menu.classList.remove("open");
+                    }});
+                }});
+            </script>
+            """
+
+            st.components.v1.html(html, height=420, scrolling=False)
+            
+        with col2:
+            with open("storage/kenya.geojson") as f:
+                geo= json.load(f)
+                feautre_id="properties.COUNTY_NAM"
+            st.markdown("**Kenya – Demographic Index**")
+            metrics=pd.read_csv('demographic_data.csv')    
+            metrics = metrics.to_dict(orient="list")
+
+       
+            colorbar_titles = {
+    "WSS": "WSS",
+    "MS": "MS",
+    "GDP": "GDP",
+    "POP": "POP",
+    "MPOP": "MPOP",
+    "FPOP": "FPOP",
+    "HH": "HH",
+    "AREA": "AREA",
+    "DENSITY": "DENSITY",
+    "PCI": "PCI",
+    "STUDENTS": "STUDENTS",
+    "HDI": "HDI",
+    "AGRI": "AGRI",
+    "MINING": "MINING",
+    "MANUF": "MANUF",
+    "ELEC": "ELEC",
+    "WATER": "WATER",
+    "CONST": "CONST",
+    "RETAIL": "RETAIL",
+    "TRANS": "TRANS",
+    "ACCOM": "ACCOM",
+    "INFO": "INFO",
+    "FIN": "FIN",
+    "ESTATE": "ESTATE",
+    "PROF": "PROF",
+    "ADMIN": "ADMIN",
+    "PUBLIC": "PUBLIC",
+    "EDU": "EDU",
+    "HEALTH": "HEALTH",
+    "OTHER": "OTHER",
+    "FISM": "FISM",
+    "GCP": "GCP",
+    "INTERNET": "INTERNET",
+    "CATH": "CATH",
+    "PROT": "PROT",
+    "EVAN": "EVAN",
+    "AIC": "AIC",
+    "ORTH": "ORTH",
+    "OTHREL": "OTHREL",
+    "MUSLIM": "MUSLIM",
+    "POV": "POV",
+    "PURCH": "PURCH",
+    "OWN": "OWN",
+    "GIFT": "GIFT",
+    "ELEC_ACC": "ELEC_ACC",
+    "SANIT": "SANIT"
+}
+
+            default_metric = "Total Population"
+            
+            fig = go.Figure(go.Choroplethmapbox(
+            geojson=geo,
+                featureidkey="properties.COUNTY_NAM",
+                locations=metrics["Location"],
+                z=metrics["Total Population"],
+                colorscale="Viridis",
+                marker_opacity=0.7,
+                marker_line_width=0.5,
+                text=metrics["Location"],  # hover name
+                hovertemplate="<b>%{text}</b><br>Score: %{z}<extra></extra>"
+                ))
+ 
+            fig.update_layout(
+                mapbox_style="open-street-map",
+                mapbox_center=MAP_CENTER,
+                mapbox_zoom=MAP_ZOOM,
+                height=400,
+                margin=dict(r=0, t=0, l=0, b=0)
+           
+            )
+            
+      
+
+            # Convert Plotly figure to JSON
+            fig_json = fig.to_json()
+
+            # Minimal HTML with floating hamburger
+            html = f"""
+            <style>
+            .wrap {{
+                position: relative;
+                height: 400px;
+                border-radius: 16px;
+                overflow: hidden;
+                background: #eef2f7;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 12px 28px rgba(0,0,0,.08);
+            }}
+            #plotA {{
+                position: absolute;
+                inset: 0;
+            }}
+            .fab {{
+                position: absolute;
+                top: 25px;
+                right: 12px;
+                z-index: 10;
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                border: none;
+                background: #fff;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                font: 700 18px/44px system-ui, sans-serif;
+                cursor: pointer;
+            }}
+            .menu {{
+                position: absolute;
+                top: 60px;
+                right: 12px;
+                z-index: 11;
+                width: 180px;
+                background: #fff;
+                border-radius: 12px;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                border: 1px solid #eef0f4;
+                display: none;
+                overflow-y: auto;
+                max-height: 250px;
+            }}
+            .menu.open {{
+                display: block;
+            }}
+            .menu div {{
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #e5e5e5;
+            }}
+            .menu div:last-child {{
+                border-bottom: none;
+            }}
+            .menu div:hover {{
+                background: #f3f6fb;
+            }}
+        .item{{ padding:10px 14px; cursor:pointer; font:500 14px/1.2 system-ui, sans-serif;}} .item:hover{{ background:#f3f6fb; }}
+
+            </style>
+
+            <div class="wrap">
+                <div id="plotA"></div>
+                <button id="fabA" class="fab">☰</button>
+                <div id="menuA" class="menu">
+  <div class="item" data-metric="GDP 2022">GDP 2022</div>
+  <div class="item" data-metric="Total Population">Total Population</div>
+  <div class="item" data-metric="Male Population">Male Population</div>
+  <div class="item" data-metric="Female population">Female population</div>
+  <div class="item" data-metric="Households-Total">Households-Total</div>
+  <div class="item" data-metric="Sq Km">Sq Km</div>
+  <div class="item" data-metric="Persons per Sq. Km">Persons per Sq. Km</div>
+  <div class="item" data-metric="PCI 2022">PCI 2022</div>
+  <div
+    class="item"
+    data-metric="number of students enrolled in secondary schools"
+  >
+    number of students enrolled in secondary schools
+  </div>
+  <div class="item" data-metric="HDI">HDI</div>
+  <div class="item" data-metric="Agriculture, Forestry & Fishing">
+    Agriculture, Forestry & Fishing
+  </div>
+  <div class="item" data-metric="Mining & Quarrying">Mining & Quarrying</div>
+  <div class="item" data-metric="Manufacturing">Manufacturing</div>
+  <div class="item" data-metric="Electricity Supply">Electricity Supply</div>
+  <div class="item" data-metric="Water Supply; Waste Collection">
+    Water Supply; Waste Collection
+  </div>
+  <div class="item" data-metric="Construction">Construction</div>
+  <div class="item" data-metric="Wholesale & Retail (Motor Repair)">
+    Wholesale & Retail (Motor Repair)
+  </div>
+  <div class="item" data-metric="Transport & Storage">Transport & Storage</div>
+  <div class="item" data-metric="Accommodation & Food Service">
+    Accommodation & Food Service
+  </div>
+  <div class="item" data-metric="Information & Communication">
+    Information & Communication
+  </div>
+  <div class="item" data-metric="Financial & Insurance Activities">
+    Financial & Insurance Activities
+  </div>
+  <div class="item" data-metric="Real Estate Activities">
+    Real Estate Activities
+  </div>
+  <div class="item" data-metric="Professional & Technical Services">
+    Professional & Technical Services
+  </div>
+  <div class="item" data-metric="Administrative Support Services">
+    Administrative Support Services
+  </div>
+  <div class="item" data-metric="Public Administration & Defense">
+    Public Administration & Defense
+  </div>
+  <div class="item" data-metric="Education">Education</div>
+  <div class="item" data-metric="Human Health & Social Work">
+    Human Health & Social Work
+  </div>
+  <div class="item" data-metric="Other Service Activities">
+    Other Service Activities
+  </div>
+  <div class="item" data-metric="Financial Services Indirectly Measured">
+    Financial Services Indirectly Measured
+  </div>
+  <div class="item" data-metric="GCP">GCP</div>
+  <div class="item" data-metric="Internet Penetration">
+    Internet Penetration
+  </div>
+  <div class="item" data-metric="Catholic">Catholic</div>
+  <div class="item" data-metric="Protestant">Protestant</div>
+  <div class="item" data-metric="Evangelicals">Evangelicals</div>
+  <div class="item" data-metric="AIC">AIC</div>
+  <div class="item" data-metric="Orthodox">Orthodox</div>
+  <div class="item" data-metric="Others">Others</div>
+  <div class="item" data-metric="Muslims">Muslims</div>
+  <div class="item" data-metric="Poverty">Poverty</div>
+  <div class="item" data-metric="Purchase Stock (%)">Purchase Stock (%)</div>
+  <div class="item" data-metric="Own Production (%)">Own Production (%)</div>
+  <div class="item" data-metric="Gifts (%)">Gifts (%)</div>
+  <div class="item" data-metric="electricity access Percentage">
+    electricity access Percentage
+  </div>
+  <div class="item" data-metric="access to sanitation">
+    access to sanitation
+  </div>
+</div>
+
+            </div>
+
+            <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+            <script>
+                const fig = {fig_json};
+                const METRICS = {json.dumps(metrics)};
+                const COLORBARS = {json.dumps(colorbar_titles)};
+                const div = document.getElementById("plotA");
+                Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
+
+                const fab = document.getElementById("fabA");
+                const menu = document.getElementById("menuA");
+
+                fab.addEventListener("click", () => {{
+                    menu.classList.toggle("open");
+                }});
+
+                document.querySelectorAll(".item").forEach(el => {{
+                    el.addEventListener("click", () => {{
+                        const metric = el.dataset.metric;
+                        Plotly.restyle(div, {{z: [METRICS[metric]]}}, [0]);
+                        Plotly.restyle(div, {{
+                                z: [METRICS[metric]],
+                'colorbar.title.text': COLORBARS[metric]
+                        }}, [0]);
+                        menu.classList.remove("open");
+                    }});
+                }});
+            </script>
+            """
+
+            st.components.v1.html(html, height=420, scrolling=False)
+
+
+        st.markdown("---")
+
+        # -------- Brand Performance Analysis --------
+        st.subheader("Brand Performance Analysis")
+
+        top_brands = agg_data.nsmallest(5, 'whiteSpaceScore').sort_values('whiteSpaceScore', ascending=True)
+        bottom_brands = agg_data.nlargest(5, 'whiteSpaceScore').sort_values('whiteSpaceScore', ascending=False)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**🏆 Top Performing Brands**")
+            for idx, row in top_brands.iterrows():
+                unique_key = f"top_{idx}_{slugify(row['brandName'])}_{slugify(row['market'])}"
+                
+                if st.button(f"{row['brandName']} - WS Score: {row['whiteSpaceScore']:.1f}", 
+                            key=unique_key):
+                    st.session_state.selected_brand = {
+                        "name": row["brandName"], 
+                        "score": row["whiteSpaceScore"]
+                    }
+                    st.session_state.prefilters = {
+                        "brandName": row["brandName"],
+                        "category": row["category"],
+                        "market": row["market"]
+                    }
+                    st.session_state.page = "detail"
+                    st.rerun()
+                    
+                st.markdown(f"""
+                            <style>
+                            .brand-card{{
+                                padding:10px !important;
+                                background: #eee;
+                            }}
+                            </style>
+                <div class="brand-card">
+                    <strong>{row['brandName']} {row['category']}</strong> - <em>{row['market']}</em> | 
+                    Category: {row['category']}<br>
+                    White Space Score: <strong>{row['whiteSpaceScore']:.1f}</strong> | 
+                    Market Share: <strong>{row['marketShare']:.1f}%</strong>
+                    <div style="background: #E5E7EB; height: 8px; border-radius: 4px; margin-top: 8px;">
+                        <div style="background: linear-gradient(to right, #10B981, #059669);
+                                    height: 8px; width: {max(0,min(100,100-float(row['whiteSpaceScore'])))}%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        with c2:
+            st.markdown("**⚠️ Underperforming Brands**") 
+            for idx, row in bottom_brands.iterrows():
+                unique_key = f"bottom_{idx}_{slugify(row['brandName'])}_{slugify(row['market'])}"
+                
+                if st.button(f"{row['brandName']} - WS Score: {row['whiteSpaceScore']:.1f}",
+                            key=unique_key):
+                    st.session_state.selected_brand = {
+                        "name": row["brandName"],
+                        "score": row["whiteSpaceScore"] 
+                    }
+                    st.session_state.prefilters = {
+                        "brandName": row["brandName"],
+                        "category": row["category"], 
+                        "market": row["market"]
+                    }
+                    st.session_state.page = "detail"
+                    st.rerun()
+                    
+                st.markdown(f"""
+                <div class="brand-card poor-brand-card">
+                    <strong>{row['brandName']} {row['category']}</strong> - <em>{row['market']}</em> | 
+                    Category: {row['category']}<br>
+                    White Space Score: <strong>{row['whiteSpaceScore']:.1f}</strong> |
+                    Market Share: <strong>{row['marketShare']:.1f}%</strong>
+                    <div style="background: #E5E7EB; height: 8px; border-radius: 4px; margin-top: 8px;">
+                        <div style="background: linear-gradient(to right, #EF4444, #DC2626);
+                                    height: 8px; width: {max(0,min(100,100-float(row['whiteSpaceScore'])))}%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    elif st.session_state.page == "detail":
+        st.markdown(
+            """
+            <style>
+            .block-container {
+                padding: 120px 40px !important;
+            }
+            </style>
+            <div class="summary-container">
+            """,
+            unsafe_allow_html=True
+        )
+        st.sidebar.markdown("---")
+        st.sidebar.header("Filters & Controls")
+   
+ 
+        if data == "MT":
+            st.sidebar.markdown("---")
+        
+            # Category selection (first)
+            category_options = sorted(BRAND_DF["category"].dropna().unique())
+        
+            # Check if there are prefilters from the button click
+            if "prefilters" in st.session_state and st.session_state.prefilters:
+                default_category = st.session_state.prefilters.get("category")
+                if default_category in category_options:
+                    default_category_index = category_options.index(default_category)
+                else:
+                    default_category_index = 0
+            else:
+                default_category_index = 0
+        
+            category = st.sidebar.selectbox("Select Report Category", category_options, index=default_category_index)
+        
+            # Brand selection (filtered by category)
+            brand_options = sorted(BRAND_DF[BRAND_DF["category"] == category]["brandName"].dropna().unique())
+        
+            if "prefilters" in st.session_state and st.session_state.prefilters:
+                default_brand = st.session_state.prefilters.get("brandName")
+                if default_brand in brand_options:
+                    default_brand_index = brand_options.index(default_brand)
+                else:
+                    default_brand_index = 0
+            else:
+                default_brand_index = 0
+        
+            brand = st.sidebar.selectbox("Select Report Brand", brand_options, index=default_brand_index)
+        
+            # Territory selection (filtered by category and brand)
+            territory_options = sorted(BRAND_DF[(BRAND_DF["category"] == category) & (BRAND_DF["brandName"] == brand)]["territory"].dropna().unique())
+        
+            if "prefilters" in st.session_state and st.session_state.prefilters:
+                default_territory = st.session_state.prefilters.get("market")
+                if default_territory in territory_options:
+                    default_territory_index = territory_options.index(default_territory)
+                else:
+                    default_territory_index = 0
+            else:
+                default_territory_index = 0
+        
+            territory = st.sidebar.selectbox("Select Report Territory", territory_options, index=default_territory_index)
+        
+            # Clear prefilters after first use
+            if "prefilters" in st.session_state:
+                st.session_state.prefilters = None
     
-    rtm_data = load_rtm_data()
-    filtered_rtm = rtm_data.copy()
-
-    if category != "All Categories":
-        filtered_rtm = filtered_rtm[filtered_rtm['category'] == category]
+        elif data == "GT":
+            st.sidebar.markdown("---")
         
-    if brand != "All Brands":
-        filtered_rtm = filtered_rtm[filtered_rtm['brand'] == brand]
+            # Load rtm_data first
+           
+            show_volume = st.sidebar.checkbox("Show RTM Data", value=True)
+
         
-    if market != "All Markets":
-        filtered_rtm = filtered_rtm[filtered_rtm['territory'] == market]
+            
+            # Category selection (first) - intersection logic
+            category_gt = BRAND_DF["category"].dropna().unique()
+            category_rtm = rtm_data["category"].dropna().unique()
+            category_options = sorted(set(category_gt).intersection(category_rtm))
+        
+            # Check if there are prefilters from the button click
+            if "prefilters" in st.session_state and st.session_state.prefilters:
+                default_category = st.session_state.prefilters.get("category")
+                if default_category in category_options:
+                    default_category_index = category_options.index(default_category)
+                else:
+                    default_category_index = 0
+            else:
+                default_category_index = 0
+        
+            category = st.sidebar.selectbox("Select Report Category", category_options, index=default_category_index)
+        
+            # Brand selection (filtered by category) - intersection logic
+            brand_gt = BRAND_DF[BRAND_DF["category"] == category]["brandName"].dropna().unique()
+            brand_rtm = rtm_data[rtm_data["category"] == category]["brand"].dropna().unique()
+            brand_options = sorted(set(brand_gt).intersection(brand_rtm))
+        
+            if "prefilters" in st.session_state and st.session_state.prefilters:
+                default_brand = st.session_state.prefilters.get("brandName")
+                if default_brand in brand_options:
+                    default_brand_index = brand_options.index(default_brand)
+                else:
+                    default_brand_index = 0
+            else:
+                default_brand_index = 0
+        
+            brand = st.sidebar.selectbox("Select Report Brand", brand_options, index=default_brand_index)
+        
+            # Territory selection (filtered by category and brand) - intersection logic
+            gt_territory = BRAND_DF[(BRAND_DF["category"] == category) & (BRAND_DF["brandName"] == brand)]["market"].dropna().unique()
+            rtm_territories = rtm_data[(rtm_data["category"] == category) & (rtm_data["brand"] == brand)]["territory"].dropna().unique()
+            territory_options = sorted(set(gt_territory).intersection(rtm_territories))
+        
+            if "prefilters" in st.session_state and st.session_state.prefilters:
+                default_territory = st.session_state.prefilters.get("market")
+                if default_territory in territory_options:
+                    default_territory_index = territory_options.index(default_territory)
+                else:
+                    default_territory_index = 0
+            else:
+                default_territory_index = 0
+        
+            territory = st.sidebar.selectbox("Select Report Territory", territory_options, index=default_territory_index)
+        
+            # Clear prefilters after first use
+            if "prefilters" in st.session_state:
+                st.session_state.prefilters = None
+    
 
-    county_data = filtered_rtm.groupby('countyNam').agg({
-        'qtyKgRtm': 'sum',
-        'whiteSpaceScore': 'mean'
-    }).reset_index()
+    
+        st.title("Market Discovery Dashboard")
+      
+    
+        filtered_df = BRAND_DF.copy()
+        if category != "All Categories":
+            filtered_df = filtered_df[filtered_df["category"] == category]
+        if brand != "All Brands":
+            filtered_df = filtered_df[filtered_df["brandName"] == brand]  
+        if territory != "All Markets":
+            filtered_df = filtered_df[filtered_df["territory"] == territory]
+    
+        st.subheader("Filtered Performance Indicators")
+    
+        if not filtered_df.empty:
+            ws_mean = filtered_df['whiteSpaceScore'].mean()
 
-    top_counties = county_data.nlargest(5, 'qtyKgRtm').sort_values('qtyKgRtm', ascending=False)
+            if pd.isna(ws_mean):
+                ws_mean = BRAND_DF['whiteSpaceScore'].mean() 
+            
+            ms_mean = filtered_df['marketShare'].mean()
+            cs_mean = filtered_df['competitorStrength'].mean()
+            ped = filtered_df['ped'].mean().round(2)
+            z_score= filtered_df['brandZVol'].mean().round(2)
+            cluster = filtered_df['cluster'].iloc[0]  # first value
+            cluster = cluster.split("|")[0] if "|" in cluster else cluster
 
-    distributor_data = filtered_rtm.groupby(['distributorName', 'territoryName']).agg({
-        'valueSold': 'sum',
-        'customerName': 'nunique'
-    }).reset_index()
-
-    top_distributors = distributor_data.nlargest(5, 'valueSold').sort_values('valueSold', ascending=False)
-
-    if len(top_counties) > 0:
-        max_qty = top_counties['qtyKgRtm'].max()
-        top_counties['score_normalized'] = (top_counties['qtyKgRtm'] / max_qty * 100)
-
-    if len(top_distributors) > 0:
-        max_sales = top_distributors['valueSold'].max()
-        top_distributors['sales_normalized'] = (top_distributors['valueSold'] / max_sales * 100)
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.markdown("**🏆 Top 5 Counties**")
-        for i, (idx, county) in enumerate(top_counties.iterrows()):
+        else:
+            ws_mean = ms_mean = 0
+    
+        kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+        with kc1:
             st.markdown(f"""
-            <div style="background: white; padding: 12px; margin: 8px 0; border-radius: 8px; 
-                        border-left: 4px solid #3B82F6; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="background: linear-gradient(to right, #3B82F6, #06B6D4); color: white; 
-                                padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">{i+1}</span>
-                    <div style="flex-grow: 1; margin-left: 12px;">
-                        <strong>{county['countyNam']}</strong><br>
-                        <small>Volume: {county['qtyKgRtm']:.2f} Kg • Whitespace Score: {county['whiteSpaceScore']:.1f}</small>
-                        <div style="background: #E5E7EB; height: 4px; border-radius: 2px; margin-top: 4px;">
-                            <div style="background: linear-gradient(to right, #3B82F6, #06B6D4); height: 4px; width: {county['score_normalized']:.1f}%; border-radius: 2px;"></div>
+                        <div class="metric-container blue-metric"><h4>White Space Score</h4><h2>{ws_mean:.1f}</h2>
+                        <span class="tooltip-text">Score (out of 100) showing untapped market potential - higher means more growth opportunity.</span>
+                        
+                        </div>
+                        """, unsafe_allow_html=True)
+        with kc2:
+            st.markdown(f"""<div class="metric-container purple-metric"><h4>Market Share</h4><h2>{ms_mean:.1f}%</h2>
+                        <span class="tooltip-text">
+                        Percentage of total market sales captured by your brand.
+                        </span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+        with kc3:
+            st.markdown(f"""<div class="metric-container green-metric"><h4>PED</h4><h2>{ped}</h2>
+                        <span class = "tooltip-text">(Price Elasticity of Demand): Indicates price sensitivity. Low (< 1) = stable demand; high (> 1) = price-sensitive.</span>
+                        </div>""", unsafe_allow_html=True)
+        with kc4:
+            st.markdown(f"""<div class="metric-container teal-metric"><h4>Z Score</h4><h2>{z_score}</h2>
+                        <span class = "tooltip-text">
+                        Shows deviation from market average. 0 = average; positive = above market; negative = below.
+                        </span>
+                        </div>""", unsafe_allow_html=True)
+    
+        with kc5:
+            st.markdown(f"""<div class="metric-container teal-metric"><h4>Cluster</h4><h2>{cluster}</h2>
+                        <span class = "tooltip-text">
+                        Groups regions with similar sales patterns and performance.
+                        </span>
+                        </div>""", unsafe_allow_html=True)
+    
+        st.markdown("---")
+    
+        st.subheader("Geographic Performance")
+    
+        left, right = st.columns(2)
+    
+        with left:
+
+            if data=='GT':
+                with open("storage/kenya_territories_lake.geojson") as f:
+                    geo = json.load(f)
+                feautre_id="properties.TERRITORY"
+                df=BRAND_DF[(BRAND_DF['territory']==territory) & (BRAND_DF['category']==category) & (BRAND_DF['brandName']==brand)]
+                metric = df.copy()
+                if show_volume:
+                    with open("kenya-subcounties-simplified.geojson") as f:
+                        geo_rtm = json.load(f)
+                    feautre_id_rtm = "properties.shapeName"
+                
+                    df_rtm = rtm_data[
+                        (rtm_data['territory']==territory) &
+                        (rtm_data['category']==category) &
+                        (rtm_data['brand']==brand)
+                    ]
+                    metric_rtm = df_rtm.copy()
+
+
+                
+            elif data =="MT":
+                with open("storage/kenya.geojson") as f:
+                    geo= json.load(f)
+                feautre_id="properties.COUNTY_NAM"
+                df=BRAND_DF[(BRAND_DF['territory']==territory) & (BRAND_DF['category']==category) & (BRAND_DF['brandName']==brand)]
+                metric = df.groupby("market", as_index=False).agg({'whiteSpaceScore': 'mean','marketShare': 'mean'}).reset_index()
+
+
+
+
+           
+            metrics = {
+                "WSS": list(metric["whiteSpaceScore"].unique()),
+                "MS": list(metric["marketShare"]),
+            }
+
+            colorbar_titles = {
+            "WSS": "WSS",
+            "MS": "MS",
+            }
+            default_metric = "WSS"
+
+            fig_prov = go.Figure(go.Choroplethmapbox(
+                geojson=geo,
+                featureidkey=feautre_id,
+                locations=metric["market"],
+                z=metrics[default_metric],
+                colorscale="Viridis",
+                marker_opacity=0.7,
+                marker_line_width=0.5,
+                text=metric["market"],  # hover name
+                hovertemplate="<b>%{text}</b><br>Score: %{z}<extra></extra>",
+                colorbar=dict(title=colorbar_titles[default_metric])
+            ))
+            
+            if data=='GT' and show_volume:
+                fig_prov = go.Figure(go.Choroplethmapbox(
+                    geojson=geo_rtm,
+                    featureidkey=feautre_id_rtm,
+                    locations=metric_rtm["subcounty"],
+                    z=metric_rtm["aws"],
+                    colorscale="Reds",
+                    marker_opacity=0.8,
+                    marker_line_width=0.8,
+                    text=metric_rtm["subcounty"],
+                    hovertemplate="<b>%{text}</b><br>AWS: %{z}<extra></extra>",
+                    colorbar=dict(title="AWS")
+                ))
+
+            fig_prov.update_layout(
+                mapbox_style="open-street-map",
+                mapbox_center=MAP_CENTER,
+                mapbox_zoom=MAP_ZOOM,
+                height=400,
+                margin=dict(r=0, t=0, l=0, b=0)
+            )
+
+            # Convert Plotly figure to JSON
+            fig_json = fig_prov.to_json()
+
+            # Prepare the metrics dictionary for JS
+
+            html = f"""
+            <style>
+            .wrap {{
+                position: relative;
+                height: 400px;
+                border-radius: 16px;
+                overflow: hidden;
+                background: #eef2f7;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 12px 28px rgba(0,0,0,.08);
+            }}
+            #plotA {{
+                position: absolute;
+                inset: 0;
+            }}
+            .fab {{
+                position: absolute;
+                top: 25px;
+                right: 12px;
+                z-index: 10;
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                border: none;
+                background: #fff;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                font: 700 18px/44px system-ui, sans-serif;
+                cursor: pointer;
+            }}
+            .menu {{
+                position: absolute;
+                top: 60px;
+                right: 12px;
+                z-index: 11;
+                width: 180px;
+                background: #fff;
+                border-radius: 12px;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                border: 1px solid #eef0f4;
+                display: none;
+            }}
+            .menu.open {{
+                display: block;
+            }}
+            .menu div {{
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #e5e5e5;
+            }}
+            .menu div:last-child {{
+                border-bottom: none;
+            }}
+            .menu div:hover {{
+                background: #f3f6fb;
+            }}
+        .item{{ padding:10px 14px; cursor:pointer; font:500 14px/1.2 system-ui, sans-serif;}} .item:hover{{ background:#f3f6fb; }}
+
+            </style>
+
+            <div class="wrap">
+                <div id="plotA"></div>
+                <button id="fabA" class="fab">☰</button>
+                <div id="menuA" class="menu">
+                    <div class="item" data-metric="WSS">White Space Score</div>
+                    <div class="item" data-metric="MS">Market Share</div>
+                </div>
+            </div>
+
+            <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+            <script>
+                const fig = {fig_json};
+                const METRICS = {json.dumps(metrics)};
+                const COLORBARS = {json.dumps(colorbar_titles)};
+                const div = document.getElementById("plotA");
+                Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
+
+                const fab = document.getElementById("fabA");
+                const menu = document.getElementById("menuA");
+
+                fab.addEventListener("click", () => {{
+                    menu.classList.toggle("open");
+                }});
+
+                document.querySelectorAll(".item").forEach(el => {{
+                    el.addEventListener("click", () => {{
+                        const metric = el.dataset.metric;
+                        Plotly.restyle(div, {{z: [METRICS[metric]]}}, [0]);
+                        Plotly.restyle(div, {{
+                                z: [METRICS[metric]],
+                'colorbar.title.text': COLORBARS[metric]
+                        }}, [0]);
+                        menu.classList.remove("open");
+                    }});
+                }});
+            </script>
+            """
+
+            st.components.v1.html(html, height=420, scrolling=False)
+            
+
+        with right:
+          
+            dataset_type = data  
+
+            filtered_data = COMP_DF[
+                (COMP_DF['category'] == category) & 
+                (COMP_DF['territory'] == territory)
+            ]
+            
+            if dataset_type == "MT":
+                top_brands = filtered_data.dropna().nlargest(5, 'totalSales')
+                METRICS = {
+                    "Total Sales": top_brands['totalSales'].tolist(),
+                    "Market Share": top_brands['marketShare'].tolist(),
+                    "Total Quantity": top_brands['totalQuantity'].tolist()
+                }
+                fig = go.Figure(go.Bar(
+                    x=top_brands['brandName'],
+                    y=METRICS["Total Sales"],
+                    marker_color="#1f77b4"
+                ))
+
+                fig.update_layout(
+                    title=f'Top 5 Competitors - {category} ({territory})',
+                    height=500,
+                    width=600
+                )
+
+                # Convert figure to JSON
+                fig_json = fig.to_json()
+                html = f"""
+                <style>
+            .wrap {{
+                position: relative;
+                height: 400px;
+                border-radius: 16px;
+                overflow: hidden;
+                background: #eef2f7;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 12px 28px rgba(0,0,0,.08);
+            }}
+            #plotA {{
+                position: absolute;
+                inset: 0;
+            }}
+            .fab {{
+                position: absolute;
+                top: 25px;
+                right: 12px;
+                z-index: 10;
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                border: none;
+                background: #fff;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                font: 700 18px/44px system-ui, sans-serif;
+                cursor: pointer;
+            }}
+            .menu {{
+                position: absolute;
+                top: 60px;
+                right: 12px;
+                z-index: 11;
+                width: 180px;
+                background: #fff;
+                border-radius: 12px;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                border: 1px solid #eef0f4;
+                display: none;
+            }}
+            .menu.open {{
+                display: block;
+            }}
+            .menu div {{
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #e5e5e5;
+            }}
+            .menu div:last-child {{
+                border-bottom: none;
+            }}
+            .menu div:hover {{
+                background: #f3f6fb;
+            }}
+        .item{{ padding:10px 14px; cursor:pointer; font:500 14px/1.2 system-ui, sans-serif;}} .item:hover{{ background:#f3f6fb; }}
+
+            </style>
+                
+        <div style="position:relative; height:500px; border-radius:16px; box-shadow: 0 12px 28px rgba(0,0,0,0.12); overflow:hidden; background:#fff;">
+            <div id="plotBar" style="position:absolute; inset:0;"></div>
+            <button id="fabBar" style="position:absolute; top:12px; right:12px; z-index:10; width:44px; height:44px; border-radius:50%; border:none;
+                                    background:#fff; box-shadow:0 8px 22px rgba(0,0,0,.12); font:700 18px/44px system-ui,sans-serif; cursor:pointer;">
+                ☰
+            </button>
+            <div id="menuBar" style="position:absolute; top:60px; right:12px; z-index:11; width:180px; background:#fff; border-radius:12px; 
+                                        box-shadow:0 8px 22px rgba(0,0,0,.12); border:1px solid #eef0f4; display:none; overflow-y:auto; max-height:150px;">
+                <div class="item" data-metric="Total Quantity">Total Quantity</div>
+                <div class="item" data-metric="Market Share">Market Share</div>
+                <div class="item" data-metric="Total Sales">Total Sales</div>
+            </div>
+        </div>
+
+        <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+        <script>
+            const fig = {fig_json};
+            const METRICS = {json.dumps(METRICS)};
+            const div = document.getElementById("plotBar");
+
+            Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
+
+            const fab = document.getElementById("fabBar");
+            const menu = document.getElementById("menuBar");
+
+            fab.addEventListener("click", () => {{
+                menu.style.display = menu.style.display === "block" ? "none" : "block";
+            }});
+
+            document.querySelectorAll(".item").forEach(el => {{
+                el.addEventListener("click", () => {{
+                    const metric = el.dataset.metric;
+
+                    Plotly.restyle(div, {{y: [METRICS[metric]]}}, [0]);
+                    menu.style.display = "none";
+                }});
+            }});
+        </script>
+        """
+
+                st.components.v1.html(html, height=520, scrolling=False)
+                
+            elif dataset_type == "GT":
+                top_5_brands = filtered_data.dropna().nlargest(5, 'brandTotalVolume')
+                METRICS = {
+                    "Brand Total Volume": top_5_brands['brandTotalVolume'].tolist(),
+                    "Market Share": top_5_brands['marketShare'].tolist(),
+                    "Units Sold": top_5_brands['unitsSold'].tolist()
+                }
+                fig = go.Figure(go.Bar(
+                    x=top_5_brands['brandName'],
+                    y=METRICS["Brand Total Volume"],
+                    marker_color="#1f77b4"
+                ))
+
+                fig.update_layout(
+                    title=f'Top 5 Competitors - {category} ({territory})',
+               
+                    height=500,
+                    width=1000
+                )
+
+                # Convert figure to JSON
+                fig_json = fig.to_json()
+                html = f"""
+                <style>
+            .wrap {{
+                position: relative;
+                height: 400px;
+                border-radius: 16px;
+                overflow: hidden;
+                background: #eef2f7;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 12px 28px rgba(0,0,0,.08);
+            }}
+            #plotA {{
+                position: absolute;
+                inset: 0;
+            }}
+            .fab {{
+                position: absolute;
+                top: 25px;
+                right: 12px;
+                z-index: 10;
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                border: none;
+                background: #fff;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                font: 700 18px/44px system-ui, sans-serif;
+                cursor: pointer;
+            }}
+            .menu {{
+                position: absolute;
+                top: 60px;
+                right: 12px;
+                z-index: 11;
+                width: 180px;
+                background: #fff;
+                border-radius: 12px;
+                box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                border: 1px solid #eef0f4;
+                display: none;
+            }}
+            .menu.open {{
+                display: block;
+            }}
+            .menu div {{
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #e5e5e5;
+            }}
+            .menu div:last-child {{
+                border-bottom: none;
+            }}
+            .menu div:hover {{
+                background: #f3f6fb;
+            }}
+        .item{{ padding:10px 14px; cursor:pointer; font:500 14px/1.2 system-ui, sans-serif;}} .item:hover{{ background:#f3f6fb; }}
+
+            </style>
+                
+            <div style="position:relative; height:550px; border-radius:16px; box-shadow: 0 12px 28px rgba(0,0,0,0.12); overflow:hidden; background:#fff;">
+
+            <div id="plotBar" style="position:absolute; inset:0;"></div>
+            <button id="fabBar" style="position:absolute; top:12px; right:12px; z-index:10; width:44px; height:44px; border-radius:50%; border:none;
+                                    background:#fff; box-shadow:0 8px 22px rgba(0,0,0,.12); font:700 18px/44px system-ui,sans-serif; cursor:pointer;">
+                ☰
+            </button>
+            <div id="menuBar" style="position:absolute; top:60px; right:12px; z-index:11; width:180px; background:#fff; border-radius:12px; 
+                                        box-shadow:0 8px 22px rgba(0,0,0,.12); border:1px solid #eef0f4; display:none; overflow-y:auto; max-height:150px;">
+                <div class="item" data-metric="Brand Total Volume">Brand Total Volume</div>
+                <div class="item" data-metric="Market Share">Market Share</div>
+                <div class="item" data-metric="Units Sold">Units Sold</div>
+            </div>
+        </div>
+
+        <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+        <script>
+            const fig = {fig_json};
+            const METRICS = {json.dumps(METRICS)};
+            const div = document.getElementById("plotBar");
+
+            Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
+
+            const fab = document.getElementById("fabBar");
+            const menu = document.getElementById("menuBar");
+
+            fab.addEventListener("click", () => {{
+                menu.style.display = menu.style.display === "block" ? "none" : "block";
+            }});
+
+            document.querySelectorAll(".item").forEach(el => {{
+                el.addEventListener("click", () => {{
+                    const metric = el.dataset.metric;
+
+                    Plotly.restyle(div, {{y: [METRICS[metric]]}}, [0]);
+                    menu.style.display = "none";
+                }});
+            }});
+        </script>
+        """
+
+                st.components.v1.html(html, height=520, scrolling=False)
+
+    
+        st.markdown("---")
+    
+        st.subheader("Detailed Brand Data")
+    
+     
+        filtered_rtm = rtm_data.copy()
+    
+        if category != "All Categories":
+            filtered_rtm = filtered_rtm[filtered_rtm['category'] == category]
+        
+        if brand != "All Brands":
+            filtered_rtm = filtered_rtm[filtered_rtm['brand'] == brand]
+        
+        if territory != "All Markets":
+            filtered_rtm = filtered_rtm[filtered_rtm['territory'] == territory]
+    
+        county_data = filtered_rtm.groupby('countyNam').agg({
+            'qtyKgRtm': 'sum',
+            'whiteSpaceScore': 'mean'
+        }).reset_index()
+    
+        top_counties = county_data.dropna().nlargest(5, 'qtyKgRtm').sort_values('qtyKgRtm', ascending=False)
+    
+        distributor_data = filtered_rtm.groupby(['distributorName','territory']).agg({
+            'valueSold': 'sum',
+            'customerName': 'nunique'
+        }).reset_index()
+    
+        top_distributors = distributor_data.dropna().nlargest(5, 'valueSold').sort_values('valueSold', ascending=False)
+    
+        if len(top_counties) > 0:
+            max_qty = top_counties['qtyKgRtm'].max()
+            top_counties['score_normalized'] = (top_counties['qtyKgRtm'] / max_qty * 100)
+    
+        if len(top_distributors) > 0:
+            max_sales = top_distributors['valueSold'].max()
+            top_distributors['sales_normalized'] = (top_distributors['valueSold'] / max_sales * 100)
+    
+        c1, c2, c3 = st.columns(3)
+    
+        with c1:
+            st.markdown("**Top 5 Counties**")
+            for i, (idx, county) in enumerate(top_counties.iterrows()):
+                st.markdown(f"""
+                <div style="background: #eee; padding: 12px !important; margin: 8px 0; border-radius: 8px;
+                            border-left: 4px solid #3B82F6; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="background: linear-gradient(to right, #3B82F6, #06B6D4); color: white;
+                                    padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">{i+1}</span>
+                        <div style="flex-grow: 1; margin-left: 12px;">
+                            <strong>{county['countyNam']}</strong><br>
+                            <small>Volume: {county['qtyKgRtm']:.2f} Kg • Whitespace Score: {county['whiteSpaceScore']:.1f}</small>
+                            <div style="background: #E5E7EB; height: 4px; border-radius: 2px; margin-top: 4px;">
+                                <div style="background: linear-gradient(to right, #3B82F6, #06B6D4); height: 4px; width: {county['score_normalized']:.1f}%; border-radius: 2px;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("**📦 Top Distributor Performance**")
-        for idx, d in top_distributors.iterrows():
-            st.markdown(f"""
-            <div class="distributor-card">
-                <strong>{d['distributorName']}</strong> <small>({d['territoryName']})</small><br>
-                <div style="display: flex; justify-content: space-between; margin: 4px 0;">
-                    <span>Sales: <strong style="color: #059669;">KES {d['valueSold']:,.0f}</strong></span>
-                    <span>Coverage: <strong style="color: #3B82F6;">{d['customerName']} customers</strong></span>
+                """, unsafe_allow_html=True)
+    
+        with c2:
+            st.markdown("**Top Distributor Performance**")
+            for idx, d in top_distributors.iterrows():
+                st.markdown(f"""
+                            <style>
+                            .distributor-card {{
+                            padding:10px !important  
+                            }}
+                            </style>
+                <div class="distributor-card">
+                    <strong>{d['distributorName']}</strong> <small>({d['territory']})</small><br>
+                    <div style="display: flex; justify-content: space-between; margin: 4px 0;">
+                        <span>Sales: <strong style="color: #059669;">KES {d['valueSold']:,.0f}</strong></span>
+                        <span>Coverage: <strong style="color: #3B82F6;">{d['customerName']} customers</strong></span>
+                    </div>
+                    <div style="background: #E5E7EB; height: 4px; border-radius: 2px; margin-top: 4px;">
+                        <div style="background: linear-gradient(to right, #10B981, #059669); height: 4px; width: {d['sales_normalized']:.1f}%; border-radius: 2px;"></div>
+                    </div>
                 </div>
-                <div style="background: #E5E7EB; height: 4px; border-radius: 2px; margin-top: 4px;">
-                    <div style="background: linear-gradient(to right, #10B981, #059669); height: 4px; width: {d['sales_normalized']:.1f}%; border-radius: 2px;"></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-elif st.session_state.page == "reports":
-    st.title("📄 Reports Page")
-    st.markdown("This is your new reports page where you can add additional report features.")
+                """, unsafe_allow_html=True)
+            
+        with c3:
+            st.markdown("**Reports Page**")
+            # st.markdown("This is your new reports page where you can add additional report features.")
+            if data=="MT":
     
-    # Load data only when on reports page
-    mt_data = load_mt_data()
-    gt_data, rtm_data = load_gt_rtm_data()
+                if brand != "All Brands" and category != "All Categories" and territory!='All Markets':
+                    if st.button(f"Generate MT Executive Report"):
+                        payload = {"brand": brand, "category": category}
+                      
+                        pdf_bytes = fetch_report("mt_executive_summary", payload)
+                        st.download_button(f" Download mt Executive Summary PDF", pdf_bytes, f"mt_executive_{brand}_{category}.pdf", "application/pdf")
+        
+                    if st.button(f"Generate MT Territory Report"):
+                        payload = {"brand": brand, "category": category, "territory": territory}
+                  
+                        pdf_bytes = fetch_report("mt_territory_report", payload)
+                        st.download_button(f" Download mt Territory PDF", pdf_bytes, f"mt_territory_{brand}_{category}_{territory}.pdf", "application/pdf")
+            elif data=="GT":
     
-    mt_brands = sorted(mt_data['brandName'].unique())
-    gt_brands = sorted(set(gt_data['brandName'].unique()).intersection(rtm_data['brand'].unique()))
+                    if brand != "All Brands" and category != "All Categories" and territory!='All Markets':
+                        if st.button(f"Generate GT Executive Report"):
+                            payload = {"brand": brand, "category": category}
+                         
+                            pdf_bytes = fetch_report("gt_executive_summary", payload)
+                            st.download_button(f" Download GT Executive Summary Report", pdf_bytes, f"mt_executive_{brand}_{category}.pdf", "application/pdf")
+            
+                        if st.button(f"Generate GT Territory Report"):
+                            payload = {"brand": brand, "category": category, "territory": territory}
+                        
+                            pdf_bytes = fetch_report("gt_territory_report", payload)
+                            st.download_button(f" Download GT Territory Report", pdf_bytes, f"mt_territory_{brand}_{category}_{territory}.pdf", "application/pdf")
+        
     
-    if data == "MT":
-        brand = st.sidebar.selectbox("Select Brand", mt_brands)
-        category_options = list(mt_data[mt_data["brandName"] == brand]["category"].unique())
-        category = st.sidebar.selectbox("Select Category", category_options)
-        territory_options = list(mt_data[(mt_data["brandName"] == brand) & (mt_data["category"] == category)]["territory"].unique())
-        territory = st.sidebar.selectbox("Select Territory", territory_options)
+            
 
-        if st.button("Generate MT Executive PDF"):
-            payload = {"brand": brand, "category": category}
-            pdf_bytes = fetch_report("mt_executive_summary", payload)
-            st.download_button(f"📥 Download MT Executive Summary PDF", pdf_bytes, f"mt_executive_{brand}_{category}.pdf", "application/pdf")
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    
+            
 
-        if st.button("Generate MT Territory PDF"):
-            payload = {"brand": brand, "category": category, "territory": territory}
-            pdf_bytes = fetch_report("mt_territory_report", payload)
-            st.download_button(f"📥 Download MT Territory PDF", pdf_bytes, f"mt_territory_{brand}_{category}_{territory}.pdf", "application/pdf")
+    elif st.session_state.page == "content_generation":
+        st.markdown(
+            """
+            <style>
+            .block-container {
+                padding: 120px 40px !important;
+            }
+            </style>
+            <div class="summary-container">
+            """,
+            unsafe_allow_html=True
+        )
+        st.subheader("Content Generation (GT LLM Input)")
+        
+        # Load data only when on content generation page
+    # --- Safe GT Content Generation Filters ---
 
-    elif data == "GT":
-        brand = st.sidebar.selectbox("Select Brand", gt_brands)
-        category_gt = (gt_data[gt_data["brandName"] == brand]['category'].unique())
-        category_rtm = sorted(rtm_data[rtm_data['brand'] == brand]['category'].unique())
+        gt_data = load_gt_data()
+
+        # 1. Build brand list safely
+        gt_brands = sorted(set(gt_data['brandName'].unique()).intersection(rtm_data['brand'].unique()))
+        if not gt_brands:
+            st.warning("⚠️ No GT brands available for content generation.")
+            st.stop()
+
+        brand = st.sidebar.selectbox("Select Brand", gt_brands, key="content_gen_brand")
+
+        # 2. Build category list safely
+        category_gt = gt_data.loc[gt_data["brandName"] == brand, 'category'].unique()
+        category_rtm = rtm_data.loc[rtm_data['brand'] == brand, 'category'].unique()
         category_S = sorted(set(category_rtm).intersection(category_gt))
-        category = st.sidebar.selectbox("Select Category", category_S)
 
-        gt_territory = sorted(gt_data[gt_data['brandName'] == brand]['market'].unique())
-        rtm_territories = sorted(rtm_data[rtm_data['brand'] == brand]['territory'].unique())
+        if not category_S:
+            st.warning(f"⚠️ No categories found for brand '{brand}'.")
+            st.write("Brands:", gt_brands)
+            st.write("Categories (GT):", category_gt)
+            st.write("Categories (RTM):", category_rtm)
+            st.write("Intersection:", category_S)
+            st.write("Territories (GT):", gt_territory)
+            st.write("Territories (RTM):", rtm_territories)
+            st.write("Intersection:", territories)
+            st.stop()
+
+        category = st.sidebar.selectbox("Select Category", category_S, key="content_gen_category")
+
+        # 3. Build territory list safely
+        gt_territory = gt_data.loc[gt_data['brandName'] == brand, 'market'].unique()
+        rtm_territories = rtm_data.loc[rtm_data['brand'] == brand, 'territory'].unique()
         territories = sorted(set(gt_territory).intersection(rtm_territories))
-        territory = st.sidebar.selectbox("Select Territory", territories)
 
-        if st.button("Generate GT Executive PDF"):
-            payload = {"brand": brand, "category": category}
-            pdf_bytes = fetch_report("gt_executive_summary", payload)
-            st.download_button(f"📥 Download GT Executive Summary PDF", pdf_bytes, f"gt_executive_{brand}_{category}.pdf", "application/pdf")
+        if not territories:
+            st.warning(f"⚠️ No territories found for brand '{brand}' and category '{category}'.")
+            st.stop()
 
-        if st.button("Generate GT Territory PDF"):
+        territory = st.sidebar.selectbox("Select Territory", territories, key="content_gen_territory")
+
+        if st.button("Generate LLM JSON"):
             payload = {"brand": brand, "category": category, "territory": territory}
-            pdf_bytes = fetch_report("gt_territory_report", payload)
-            st.download_button(f"📥 Download GT Territory PDF", pdf_bytes, f"gt_territory_{brand}_{category}_{territory}.pdf", "application/pdf")
+            result_json = fetch_report("gt_llm_input", payload)
+            st.session_state["llm_json_full"] = result_json
+            st.success("JSON generated successfully!")
 
-elif st.session_state.page == "content_generation":
-    st.subheader("📝 Content Generation (GT LLM Input)")
-    
-    # Load data only when on content generation page
-    gt_data, rtm_data = load_gt_rtm_data()
-    gt_brands = sorted(set(gt_data['brandName'].unique()).intersection(rtm_data['brand'].unique()))
-
-    brand = st.sidebar.selectbox("Select Brand", gt_brands, key="content_gen_brand")
-    category_gt = (gt_data[gt_data["brandName"] == brand]['category'].unique())
-    category_rtm = sorted(rtm_data[rtm_data['brand'] == brand]['category'].unique())
-    category_S = sorted(set(category_rtm).intersection(category_gt))
-    category = st.sidebar.selectbox("Select Category", category_S, key="content_gen_category")
-
-    gt_territory = sorted(gt_data[gt_data['brandName'] == brand]['market'].unique())
-    rtm_territories = sorted(rtm_data[rtm_data['brand'] == brand]['territory'].unique())
-    territories = sorted(set(gt_territory).intersection(rtm_territories))
-    territory = st.sidebar.selectbox("Select Territory", territories, key="content_gen_territory")
-
-    if st.button("Generate LLM JSON"):
-        payload = {"brand": brand, "category": category, "territory": territory}
-        result_json = fetch_report("gt_llm_input", payload)
-        st.session_state["llm_json_full"] = result_json
-        st.success("JSON generated successfully!")
-
-    if "llm_json_full" in st.session_state:
-        llm_data = st.session_state["llm_json_full"]
-        
-        st.markdown("### ✏️ Edit Content Instructions")
-        
-        current_text_instructions = llm_data.get("text_instructions", "")
-        current_image_instructions = llm_data.get("image_instructions", "")
-        current_language = llm_data.get("language", "")
-        
-        edited_text_instructions = st.text_area(
-            "Text Instructions:",
-            value=current_text_instructions,
-            height=150,
-            key="edit_text_instructions",
-            help="Instructions for generating text content"
-        )
-        
-        edited_image_instructions = st.text_area(
-            "Image Instructions:",
-            value=current_image_instructions,
-            height=150,
-            key="edit_image_instructions",
-            help="Instructions for generating or selecting images"
-        )
-        
-        edited_language = st.text_input(
-            "Language:",
-            value=current_language,
-            key="edit_language",
-            help="Target language for the content"
-        )
-        
-        llm_data["text_instructions"] = edited_text_instructions
-        llm_data["image_instructions"] = edited_image_instructions
-        llm_data["language"] = edited_language
-        
-        with st.expander("📄 View Full JSON Configuration"):
-            st.json(llm_data)
-        
-        output_type = llm_data.get("output_type", "{}")
-        
-        image_base64 = ""
-        if output_type in ["image", "text_image"]:
-            image = st.file_uploader(
-                "Upload a PNG image (max 1 MB)", 
-                type=["png"], 
-                key="llm_image_upload"
+        if "llm_json_full" in st.session_state:
+            llm_data = st.session_state["llm_json_full"]
+            
+            st.markdown("### ✏️ Edit Content Instructions")
+            
+            current_text_instructions = llm_data.get("text_instructions", "")
+            current_image_instructions = llm_data.get("image_instructions", "")
+            current_language = llm_data.get("language", "")
+            
+            edited_text_instructions = st.text_area(
+                "Text Instructions:",
+                value=current_text_instructions,
+                height=150,
+                key="edit_text_instructions",
+                help="Instructions for generating text content"
             )
-            if image:
-                image_bytes = image.read()
-                image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-            else:
-                st.warning('Please upload an image to proceed.')
+            
+            edited_image_instructions = st.text_area(
+                "Image Instructions:",
+                value=current_image_instructions,
+                height=150,
+                key="edit_image_instructions",
+                help="Instructions for generating or selecting images"
+            )
+            
+            edited_language = st.text_input(
+                "Language:",
+                value=current_language,
+                key="edit_language",
+                help="Target language for the content"
+            )
+            
+            llm_data["text_instructions"] = edited_text_instructions
+            llm_data["image_instructions"] = edited_image_instructions
+            llm_data["language"] = edited_language
+            
+            
+            output_type = llm_data.get("output_type", "{}")
+            
+            image_base64 = ""
+            if output_type in ["image", "text_image"]:
+                image = st.file_uploader(
+                    "Upload a PNG image (max 1 MB)", 
+                    type=["png"], 
+                    key="llm_image_upload"
+                )
+                if image:
+                    image_bytes = image.read()
+                    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+                else:
+                    st.warning('Please upload an image to proceed.')
 
-        if st.button("Generate Final Output", key="llm_generate_final"):
-            if output_type in ["image", "text_image"] and not image_base64:
-                st.error("Please upload an image before generating final output.")
-            else:
-                st.write("Sending to the backend...")
-                run_backend_sync(llm_data, image_base64)
+            if st.button("Generate Final Output", key="llm_generate_final"):
+                if output_type in ["image", "text_image"] and not image_base64:
+                    st.error("Please upload an image before generating final output.")
+                else:
+                    with st.spinner("Generating image..."):
+                        run_backend_sync(llm_data, image_base64)
+        else:
+            st.info("Click 'Generate LLM JSON' to start.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+if __name__ == "__main__":
+    # Initialize session state
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'username' not in st.session_state:
+        st.session_state.username = ''
+    
+    # Route based on login status
+    if st.session_state.logged_in:
+        main_app()
     else:
-        st.info("Click 'Generate LLM JSON' to start.")
+        login_page()
