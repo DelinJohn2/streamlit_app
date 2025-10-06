@@ -1664,9 +1664,9 @@ def main_app():
         if territory != "All Markets":
             filtered_rtm = filtered_rtm[filtered_rtm['territory'] == territory]
     
-        county_data = filtered_rtm.groupby('countyNam').agg({
+        county_data = filtered_rtm.groupby('county').agg({
             'qtyKgRtm': 'sum',
-            'whiteSpaceScore': 'mean'
+            'aws': 'mean'
         }).reset_index()
     
         top_counties = county_data.dropna().nlargest(5, 'qtyKgRtm').sort_values('qtyKgRtm', ascending=False)
@@ -1698,8 +1698,8 @@ def main_app():
                         <span style="background: linear-gradient(to right, #3B82F6, #06B6D4); color: white;
                                     padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">{i+1}</span>
                         <div style="flex-grow: 1; margin-left: 12px;">
-                            <strong>{county['countyNam']}</strong><br>
-                            <small>Volume: {county['qtyKgRtm']:.2f} Kg • Whitespace Score: {county['whiteSpaceScore']:.1f}</small>
+                            <strong>{county['county']}</strong><br>
+                            <small>Volume: {county['qtyKgRtm']:.2f} Kg • Whitespace Score: {county['aws']:.1f}</small>
                             <div style="background: #E5E7EB; height: 4px; border-radius: 2px; margin-top: 4px;">
                                 <div style="background: linear-gradient(to right, #3B82F6, #06B6D4); height: 4px; width: {county['score_normalized']:.1f}%; border-radius: 2px;"></div>
                             </div>
