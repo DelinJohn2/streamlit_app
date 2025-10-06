@@ -1203,9 +1203,6 @@ def main_app():
                         </div>""", unsafe_allow_html=True)
     
         st.markdown("---")
-    
-        st.subheader("Geographic Performance")
-    
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Geographic Performance")
