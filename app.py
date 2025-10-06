@@ -943,7 +943,7 @@ def main_app():
             for idx, row in top_brands.iterrows():
                 unique_key = f"top_{idx}_{slugify(row['brandName'])}_{slugify(row['market'])}"
                 
-                if st.button(f"{row['brandName']} - WS Score: {row['whiteSpaceScore']:.1f}", 
+                if st.button(f"{row['brandName']} - WS Score: {row['whiteSpaceScore']:.1f} %", 
                             key=unique_key):
                     st.session_state.selected_brand = {
                         "name": row["brandName"], 
@@ -981,7 +981,7 @@ def main_app():
             for idx, row in bottom_brands.iterrows():
                 unique_key = f"bottom_{idx}_{slugify(row['brandName'])}_{slugify(row['market'])}"
                 
-                if st.button(f"{row['brandName']} - WS Score: {row['whiteSpaceScore']:.1f}",
+                if st.button(f"{row['brandName']} - WS Score: {row['whiteSpaceScore']:.1f}%",
                             key=unique_key):
                     st.session_state.selected_brand = {
                         "name": row["brandName"],
@@ -1159,7 +1159,7 @@ def main_app():
                 ws_mean = BRAND_DF['whiteSpaceScore'].mean() 
             
             ms_mean = filtered_df['marketShare'].mean()
-            cs_mean = filtered_df['competitorStrength'].mean()
+   
             ped = filtered_df['ped'].mean().round(2)
             z_score= filtered_df['brandZVol'].mean().round(2)
             cluster = filtered_df['cluster'].iloc[0]  # first value
@@ -1206,6 +1206,12 @@ def main_app():
     
         st.subheader("Geographic Performance")
     
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Geographic Performance")
+
+        with col2:
+            st.subheader("Top 5 Competitors")
         left, right = st.columns(2)
     
         with left:
@@ -1699,7 +1705,7 @@ def main_app():
                                     padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">{i+1}</span>
                         <div style="flex-grow: 1; margin-left: 12px;">
                             <strong>{county['county']}</strong><br>
-                            <small>Volume: {county['qtyKgRtm']:.2f} Kg • Whitespace Score: {county['aws']:.1f}</small>
+                            <small>Volume: {county['qtyKgRtm']:.2f} Kg • AWS: {county['aws']:.1f}%</small>
                             <div style="background: #E5E7EB; height: 4px; border-radius: 2px; margin-top: 4px;">
                                 <div style="background: linear-gradient(to right, #3B82F6, #06B6D4); height: 4px; width: {county['score_normalized']:.1f}%; border-radius: 2px;"></div>
                             </div>
