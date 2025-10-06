@@ -246,7 +246,7 @@ def main_app():
         mk=st.markdown(f"""
             <div class="metric-container {color}-metric" >
                 <h3>{container_name}</h3>
-                <h1>{score:.1f}</h1>
+                <h1>{score:.1f} % </h1>
                 <p>Across {dist_factor} brands</p>
                 <span class = "tooltip-text">
                         {span}
@@ -967,7 +967,7 @@ def main_app():
                 <div class="brand-card">
                     <strong>{row['brandName']} {row['category']}</strong> - <em>{row['market']}</em> | 
                     Category: {row['category']}<br>
-                    White Space Score: <strong>{row['whiteSpaceScore']:.1f}</strong> | 
+                    White Space Score: <strong>{row['whiteSpaceScore']:.1f}%</strong> | 
                     Market Share: <strong>{row['marketShare']:.1f}%</strong>
                     <div style="background: #E5E7EB; height: 8px; border-radius: 4px; margin-top: 8px;">
                         <div style="background: linear-gradient(to right, #10B981, #059669);
@@ -999,7 +999,7 @@ def main_app():
                 <div class="brand-card poor-brand-card">
                     <strong>{row['brandName']} {row['category']}</strong> - <em>{row['market']}</em> | 
                     Category: {row['category']}<br>
-                    White Space Score: <strong>{row['whiteSpaceScore']:.1f}</strong> |
+                    White Space Score: <strong>{row['whiteSpaceScore']:.1f}%</strong> |
                     Market Share: <strong>{row['marketShare']:.1f}%</strong>
                     <div style="background: #E5E7EB; height: 8px; border-radius: 4px; margin-top: 8px;">
                         <div style="background: linear-gradient(to right, #EF4444, #DC2626);
@@ -1171,7 +1171,7 @@ def main_app():
         kc1, kc2, kc3, kc4, kc5 = st.columns(5)
         with kc1:
             st.markdown(f"""
-                        <div class="metric-container blue-metric"><h4>White Space Score</h4><h2>{ws_mean:.1f}</h2>
+                        <div class="metric-container blue-metric"><h4>White Space Score</h4><h2>{ws_mean:.1f}%</h2>
                         <span class="tooltip-text">Score (out of 100) showing untapped market potential - higher means more growth opportunity.</span>
                         
                         </div>
