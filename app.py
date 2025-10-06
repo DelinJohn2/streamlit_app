@@ -665,7 +665,7 @@ def main_app():
                 geo= json.load(f)
                 feautre_id="properties.COUNTY_NAM"
             st.markdown("**Kenya – Demographic Index**")
-            metrics=pd.read_csv('demographic_data.csv')    
+            metrics=pd.read_csv('storage/demographic_data.csv')    
             metrics = metrics.to_dict(orient="list")
 
        
@@ -1217,7 +1217,7 @@ def main_app():
                 df=BRAND_DF[(BRAND_DF['territory']==territory) & (BRAND_DF['category']==category) & (BRAND_DF['brandName']==brand)]
                 metric = df.copy()
                 if show_volume:
-                    with open("kenya-subcounties-simplified.geojson") as f:
+                    with open("storage/kenya-subcounties-simplified.geojson") as f:
                         geo_rtm = json.load(f)
                     feautre_id_rtm = "properties.shapeName"
                 
