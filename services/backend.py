@@ -5,7 +5,7 @@ import streamlit as st
 from utils import base64_to_image,parse_json_payload
 
 def fetch_report(api_mapper: str, payload: dict, output_file: str = None):
-    base_ip= "10.206.0.3"
+    base_ip= "34.0.149.91"
 
     apis = {
         "mt_executive_summary": f"http://{base_ip}:8001/api/mt/executive_summary",
@@ -39,7 +39,7 @@ def run_backend_sync(payload: dict, image_location: str = "", max_retries: int =
    
     output_type, image_prompt, text_prompt, product_data = parse_json_payload(payload)
     start_time = datetime.now()
-    base_ip="10.206.0.3"
+    base_ip="34.0.149.91"
 
     
     backend_map= {
@@ -78,7 +78,11 @@ def run_backend_sync(payload: dict, image_location: str = "", max_retries: int =
     # Display results
     if output_type == "text":
         for i in range(1, 4):
-            st.write(result.get(f"output_{i}", ""))
+            text_dict=result.get(f"output_{i}", "")
+            for k, v in text_dict.items():
+                    st.markdown(f"**{k}**")
+                    st.write(v)
+                    st.markdown("---")  # separator line
 
     elif output_type == "image":
         for i in range(1, 4):
@@ -86,7 +90,11 @@ def run_backend_sync(payload: dict, image_location: str = "", max_retries: int =
 
     elif output_type == "text_image":
         for i in range(1, 4):
-            st.write(result['text'].get(f"output_{i}", ""))
+            text_dict=result['text'].get(f"output_{i}", "")
+            for k, v in text_dict.items():
+                    st.markdown(f"**{k}**")
+                    st.write(v)
+                    st.markdown("---")  # separator line
             st.image(base64_to_image(result['image_result'].get(f"result{i}", "")))
 
     elapsed = (datetime.now() - start_time).total_seconds() / 60
