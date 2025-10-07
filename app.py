@@ -209,37 +209,57 @@ def main_app():
 
     @st.cache_data(show_spinner=True)
     def load_rtm_data():
-        gt_fetcher = DataReaderGT()  
-        rtm_data = gt_fetcher.read_rtm_data()
-        return rtm_data
+        try:
+            gt_fetcher = DataReaderGT()  
+            rtm_data = gt_fetcher.read_rtm_data()
+            return rtm_data
+        except Exception as e:
+            st.warning(f"⚠️ Failed to load RTM data due to: {e}. Please try again.")
+            return None
+
 
     @st.cache_data(show_spinner=False)
     def load_brand_data(data):
         """Load brand data with expected columns: brandName, category, market, marketShare, competitorStrength, whiteSpaceScore"""
-        if data=='MT':
-            df = mt_reader.read_mt_pwani_data()
-        elif data=="GT":
-            df = gt_reader.read_gt_pwani_data()    
-    
-        
-        return df
+        try:
+            if data == 'MT':
+                df = mt_reader.read_mt_pwani_data()
+            elif data == "GT":
+                df = gt_reader.read_gt_pwani_data()
+            else:
+                raise ValueError("Invalid data type. Expected 'MT' or 'GT'.")
+            return df
+        except Exception as e:
+            st.warning(f"⚠️ Could not load brand data ({data}). Error: {e}. Please try again.")
+            return None
+
+
     @st.cache_data(show_spinner=False)
     def load_competitor_data(data):
-        """Load brand data with expected columns: brandName, category, market, marketShare, competitorStrength, whiteSpaceScore"""
-        if data=='MT':
-            df = mt_reader.read_mt_competitor_data()
-        elif data=="GT":
-            df = gt_reader.read_gt_competitor_data()    
+        """Load competitor data for MT or GT"""
+        try:
+            if data == 'MT':
+                df = mt_reader.read_mt_competitor_data()
+            elif data == "GT":
+                df = gt_reader.read_gt_competitor_data()
+            else:
+                raise ValueError("Invalid data type. Expected 'MT' or 'GT'.")
+            return df
+        except Exception as e:
+            st.warning(f"⚠️ Failed to load competitor data ({data}). Error: {e}. Please try again.")
+            return None
 
-        
-        return df
 
     @st.cache_data(show_spinner=True)
     def load_gt_data():
-        gt_fetcher = DataReaderGT()
-        gt_data = gt_fetcher.read_gt_pwani_data()
-        
-        return gt_data
+        try:
+            gt_fetcher = DataReaderGT()
+            gt_data = gt_fetcher.read_gt_pwani_data()
+            return gt_data
+        except Exception as e:
+            st.warning(f"⚠️ Could not load GT data due to: {e}. Please try again.")
+            return None
+    
     
 
     def markdown_container(color,container_name,score,dist_factor,span):  
@@ -1021,12 +1041,13 @@ def main_app():
             """,
             unsafe_allow_html=True
         )
-        st.sidebar.markdown("---")
-        st.sidebar.header("Filters & Controls")
+     
+        
    
  
         if data == "MT":
             st.sidebar.markdown("---")
+            st.sidebar.header("Filters & Controls")
         
             # Category selection (first)
             category_options = sorted(BRAND_DF["category"].dropna().unique())
@@ -1041,7 +1062,7 @@ def main_app():
             else:
                 default_category_index = 0
         
-            category = st.sidebar.selectbox("Select Report Category", category_options, index=default_category_index)
+            category = st.sidebar.selectbox("Select Report Category", ["All Categories"]+category_options, index=default_category_index)
         
             # Brand selection (filtered by category)
             brand_options = sorted(BRAND_DF[BRAND_DF["category"] == category]["brandName"].dropna().unique())
@@ -1055,7 +1076,7 @@ def main_app():
             else:
                 default_brand_index = 0
         
-            brand = st.sidebar.selectbox("Select Report Brand", brand_options, index=default_brand_index)
+            brand = st.sidebar.selectbox("Select Report Brand",['All Brands'] + brand_options, index=default_brand_index)
         
             # Territory selection (filtered by category and brand)
             territory_options = sorted(BRAND_DF[(BRAND_DF["category"] == category) & (BRAND_DF["brandName"] == brand)]["territory"].dropna().unique())
@@ -1069,7 +1090,7 @@ def main_app():
             else:
                 default_territory_index = 0
         
-            territory = st.sidebar.selectbox("Select Report Territory", territory_options, index=default_territory_index)
+            territory = st.sidebar.selectbox("Select Report Territory",["All Markets"]+ territory_options, index=default_territory_index)
         
             # Clear prefilters after first use
             if "prefilters" in st.session_state:
@@ -1099,7 +1120,7 @@ def main_app():
             else:
                 default_category_index = 0
         
-            category = st.sidebar.selectbox("Select Report Category", category_options, index=default_category_index)
+            category = st.sidebar.selectbox("Select Report Category",['All Categories']+ category_options, index=default_category_index)
         
             # Brand selection (filtered by category) - intersection logic
             brand_gt = BRAND_DF[BRAND_DF["category"] == category]["brandName"].dropna().unique()
@@ -1115,7 +1136,7 @@ def main_app():
             else:
                 default_brand_index = 0
         
-            brand = st.sidebar.selectbox("Select Report Brand", brand_options, index=default_brand_index)
+            brand = st.sidebar.selectbox("Select Report Brand", ['All Brands']+brand_options, index=default_brand_index)
         
             # Territory selection (filtered by category and brand) - intersection logic
             gt_territory = BRAND_DF[(BRAND_DF["category"] == category) & (BRAND_DF["brandName"] == brand)]["market"].dropna().unique()
@@ -1131,7 +1152,7 @@ def main_app():
             else:
                 default_territory_index = 0
         
-            territory = st.sidebar.selectbox("Select Report Territory", territory_options, index=default_territory_index)
+            territory = st.sidebar.selectbox("Select Report Territory",['All Markets'] + territory_options, index=default_territory_index)
         
             # Clear prefilters after first use
             if "prefilters" in st.session_state:
@@ -1143,12 +1164,18 @@ def main_app():
       
     
         filtered_df = BRAND_DF.copy()
-        if category != "All Categories":
-            filtered_df = filtered_df[filtered_df["category"] == category]
-        if brand != "All Brands":
-            filtered_df = filtered_df[filtered_df["brandName"] == brand]  
-        if territory != "All Markets":
-            filtered_df = filtered_df[filtered_df["territory"] == territory]
+        if not (
+            category == "All Categories"
+            and brand == "All Brands"
+            and territory == "All Markets"
+        ):
+            if category != "All Categories":
+                filtered_df = filtered_df[filtered_df["category"] == category]
+            if brand != "All Brands":
+                filtered_df = filtered_df[filtered_df["brandName"] == brand]
+            if territory != "All Markets":
+                filtered_df = filtered_df[filtered_df["territory"] == territory]
+
     
         st.subheader("Filtered Performance Indicators")
     
@@ -1203,6 +1230,7 @@ def main_app():
                         </div>""", unsafe_allow_html=True)
     
         st.markdown("---")
+    
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Geographic Performance")
@@ -1217,18 +1245,28 @@ def main_app():
                 with open("storage/kenya_territories_lake.geojson") as f:
                     geo = json.load(f)
                 feautre_id="properties.TERRITORY"
-                df=BRAND_DF[(BRAND_DF['territory']==territory) & (BRAND_DF['category']==category) & (BRAND_DF['brandName']==brand)]
+                if territory == "All Markets" and category == "All Categories" and brand == "All Brands":
+                    df = BRAND_DF.copy()
+                else:
+                    df = BRAND_DF[
+                        (BRAND_DF["territory"] == territory if territory != "All Markets" else True) &
+                        (BRAND_DF["category"] == category if category != "All Categories" else True) &
+                        (BRAND_DF["brandName"] == brand if brand != "All Brands" else True)
+                    ]
                 metric = df.copy()
                 if show_volume:
                     with open("storage/kenya-subcounties-simplified.geojson") as f:
                         geo_rtm = json.load(f)
                     feautre_id_rtm = "properties.shapeName"
                 
-                    df_rtm = rtm_data[
-                        (rtm_data['territory']==territory) &
-                        (rtm_data['category']==category) &
-                        (rtm_data['brand']==brand)
-                    ]
+                    if territory == "All Markets" and category == "All Categories" and brand == "All Brands":
+                        df_rtm = rtm_data.copy()
+                    else:
+                        df_rtm = rtm_data[
+                            (rtm_data["territory"] == territory if territory != "All Markets" else True) &
+                            (rtm_data["category"] == category if category != "All Categories" else True) &
+                            (rtm_data["brand"] == brand if brand != "All Brands" else True)
+                        ]
                     metric_rtm = df_rtm.copy()
 
 
@@ -1237,7 +1275,14 @@ def main_app():
                 with open("storage/kenya.geojson") as f:
                     geo= json.load(f)
                 feautre_id="properties.COUNTY_NAM"
-                df=BRAND_DF[(BRAND_DF['territory']==territory) & (BRAND_DF['category']==category) & (BRAND_DF['brandName']==brand)]
+                if territory == "All Markets" and category == "All Categories" and brand == "All Brands":
+                    df = BRAND_DF.copy()
+                else:
+                    df = BRAND_DF[
+                        (BRAND_DF["territory"] == territory if territory != "All Markets" else True) &
+                        (BRAND_DF["category"] == category if category != "All Categories" else True) &
+                        (BRAND_DF["brandName"] == brand if brand != "All Brands" else True)
+                    ]
                 metric = df.groupby("market", as_index=False).agg({'whiteSpaceScore': 'mean','marketShare': 'mean'}).reset_index()
 
 
@@ -1398,14 +1443,21 @@ def main_app():
         with right:
           
             dataset_type = data  
+            if category == "All Categories":
+                filtered_data=COMP_DF
+            else:    
 
-            filtered_data = COMP_DF[
-                (COMP_DF['category'] == category) & 
-                (COMP_DF['territory'] == territory)
-            ]
+                filtered_data = COMP_DF[
+                    (COMP_DF['category'] == category) & 
+                    (COMP_DF['territory'] == territory)
+                ]
             
             if dataset_type == "MT":
-                top_brands = filtered_data.dropna().nlargest(5, 'totalSales')
+                filtered_data=filtered_data.groupby('brandName').agg({'totalSales':'sum',
+                                                                      "marketShare":'mean',
+                                                                      "totalQuantity":'sum'}).reset_index()
+                top_brands = filtered_data.nlargest(5, 'totalSales')
+               
                 METRICS = {
                     "Total Sales": top_brands['totalSales'].tolist(),
                     "Market Share": top_brands['marketShare'].tolist(),
@@ -1418,7 +1470,7 @@ def main_app():
                 ))
 
                 fig.update_layout(
-                    title=f'Top 5 Competitors - {category} ({territory})',
+                    
                     height=500,
                     width=600
                 )
@@ -1484,7 +1536,7 @@ def main_app():
 
             </style>
                 
-        <div style="position:relative; height:500px; border-radius:16px; box-shadow: 0 12px 28px rgba(0,0,0,0.12); overflow:hidden; background:#fff;">
+        <div style="position:relative; height:500px; border-radius:16px; overflow:hidden; background:#fff;">
             <div id="plotBar" style="position:absolute; inset:0;"></div>
             <button id="fabBar" style="position:absolute; top:12px; right:12px; z-index:10; width:44px; height:44px; border-radius:50%; border:none;
                                     background:#fff; box-shadow:0 8px 22px rgba(0,0,0,.12); font:700 18px/44px system-ui,sans-serif; cursor:pointer;">
@@ -1671,8 +1723,11 @@ def main_app():
             'qtyKgRtm': 'sum',
             'aws': 'mean'
         }).reset_index()
+      
     
-        top_counties = county_data.dropna().nlargest(5, 'qtyKgRtm').sort_values('qtyKgRtm', ascending=False)
+        top_counties = county_data.sort_values('qtyKgRtm', ascending=False).head(5)
+
+       
     
         distributor_data = filtered_rtm.groupby(['distributorName','territory']).agg({
             'valueSold': 'sum',
@@ -1684,7 +1739,7 @@ def main_app():
         if len(top_counties) > 0:
             max_qty = top_counties['qtyKgRtm'].max()
             top_counties['score_normalized'] = (top_counties['qtyKgRtm'] / max_qty * 100)
-    
+           
         if len(top_distributors) > 0:
             max_sales = top_distributors['valueSold'].max()
             top_distributors['sales_normalized'] = (top_distributors['valueSold'] / max_sales * 100)
@@ -1732,44 +1787,71 @@ def main_app():
                 </div>
                 """, unsafe_allow_html=True)
             
+     
         with c3:
             st.markdown("**Reports Page**")
-            # st.markdown("This is your new reports page where you can add additional report features.")
-            if data=="MT":
-    
-                if brand != "All Brands" and category != "All Categories" and territory!='All Markets':
-                    if st.button(f"Generate MT Executive Report"):
-                        payload = {"brand": brand, "category": category}
-                      
-                        pdf_bytes = fetch_report("mt_executive_summary", payload)
-                        st.download_button(f" Download mt Executive Summary PDF", pdf_bytes, f"mt_executive_{brand}_{category}.pdf", "application/pdf")
-        
-                    if st.button(f"Generate MT Territory Report"):
-                        payload = {"brand": brand, "category": category, "territory": territory}
-                  
-                        pdf_bytes = fetch_report("mt_territory_report", payload)
-                        st.download_button(f" Download mt Territory PDF", pdf_bytes, f"mt_territory_{brand}_{category}_{territory}.pdf", "application/pdf")
-            elif data=="GT":
-    
-                    if brand != "All Brands" and category != "All Categories" and territory!='All Markets':
-                        if st.button(f"Generate GT Executive Report"):
-                            payload = {"brand": brand, "category": category}
-                         
-                            pdf_bytes = fetch_report("gt_executive_summary", payload)
-                            st.download_button(f" Download GT Executive Summary Report", pdf_bytes, f"mt_executive_{brand}_{category}.pdf", "application/pdf")
-            
-                        if st.button(f"Generate GT Territory Report"):
-                            payload = {"brand": brand, "category": category, "territory": territory}
-                        
-                            pdf_bytes = fetch_report("gt_territory_report", payload)
-                            st.download_button(f" Download GT Territory Report", pdf_bytes, f"mt_territory_{brand}_{category}_{territory}.pdf", "application/pdf")
-        
-    
-            
 
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    
+            if data == "MT":
+                if brand != "All Brands" and category != "All Categories" and territory != "All Markets":
+                    if st.button("Generate MT Executive Report"):
+                        try:
+                            payload = {"brand": brand, "category": category}
+                            pdf_bytes = fetch_report("mt_executive_summary", payload)
+                            st.download_button(
+                                "Download MT Executive Summary PDF",
+                                pdf_bytes,
+                                f"mt_executive_{brand}_{category}.pdf",
+                                "application/pdf"
+                            )
+                        except Exception:
+                            st.warning("Something went wrong while generating the report. Please click the button again.")
+
+                    if st.button("Generate MT Territory Report"):
+                        try:
+                            payload = {"brand": brand, "category": category, "territory": territory}
+                            pdf_bytes = fetch_report("mt_territory_report", payload)
+                            st.download_button(
+                                "Download MT Territory PDF",
+                                pdf_bytes,
+                                f"mt_territory_{brand}_{category}_{territory}.pdf",
+                                "application/pdf"
+                            )
+                        except Exception:
+                            st.warning("Unable to generate the territory report. Please try clicking again in a moment.")
+                else:
+                        st.warning("Please Select a brand")                                 
+                            
+
+            elif data == "GT":
+                if brand != "All Brands" and category != "All Categories" and territory != "All Markets":
+                    if st.button("Generate GT Executive Report"):
+                        try:
+                            payload = {"brand": brand, "category": category}
+                            pdf_bytes = fetch_report("gt_executive_summary", payload)
+                            st.download_button(
+                                "Download GT Executive Summary Report",
+                                pdf_bytes,
+                                f"gt_executive_{brand}_{category}.pdf",
+                                "application/pdf"
+                            )
+                        except Exception:
+                            st.warning("There was a small issue generating the GT Executive Report. Please try again.")
+      
+
+                    if st.button("Generate GT Territory Report"):
+                        try:
+                            payload = {"brand": brand, "category": category, "territory": territory}
+                            pdf_bytes = fetch_report("gt_territory_report", payload)
+                            st.download_button(
+                                "Download GT Territory Report",
+                                pdf_bytes,
+                                f"gt_territory_{brand}_{category}_{territory}.pdf",
+                                "application/pdf"
+                            )
+                        except Exception:
+                            st.warning("Something went wrong while creating the GT Territory Report. Please click again.")
+                else:
+                        st.warning("Please Select a brand")  
             
 
     elif st.session_state.page == "content_generation":
