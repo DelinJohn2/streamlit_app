@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from data_fetcher import DataReaderMt,DataReaderGT
+from data_fetcher import DataReaderMt,DataReaderGT,read_target_audience
 from utils import slugify
 import plotly.graph_objects as go
 from services import fetch_report,run_backend_sync
@@ -259,6 +259,16 @@ def main_app():
         except Exception as e:
             st.warning(f"⚠️ Could not load GT data due to: {e}. Please try again.")
             return None
+    @st.cache_data(show_spinner=True)
+    def load_target_audience():
+        try:
+            df=read_target_audience()
+            return df
+        except Exception as e:
+            st.warning(f"⚠️ Could not load GT data due to: {e}. Please try again.")
+            
+
+
     
     
 
@@ -1194,8 +1204,26 @@ def main_app():
 
         else:
             ws_mean = ms_mean = 0
-    
-        kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+
+        tg_audience = load_target_audience()
+
+        if tg_audience is not None and not tg_audience.empty:
+            mask = pd.Series(True, index=tg_audience.index)
+
+            if territory != "All Markets":
+                mask &= tg_audience["market"] == territory
+            if category != "All Categories":
+                mask &= tg_audience["category"] == category
+            if brand != "All Brands":
+                mask &= tg_audience["brandName"] == brand
+
+            ta_number = tg_audience[mask]
+            target_au = ta_number["targetAudience"].sum()
+        else:
+            ta_number = pd.DataFrame()
+            target_au = 0
+        
+        kc1, kc2, kc3, kc4, kc5,kc6 = st.columns(6)
         with kc1:
             st.markdown(f"""
                         <div class="metric-container blue-metric"><h4>White Space Score</h4><h2>{ws_mean:.1f}%</h2>
@@ -1216,18 +1244,27 @@ def main_app():
                         <span class = "tooltip-text">(Price Elasticity of Demand): Indicates price sensitivity. Low (< 1) = stable demand; high (> 1) = price-sensitive.</span>
                         </div>""", unsafe_allow_html=True)
         with kc4:
-            st.markdown(f"""<div class="metric-container teal-metric"><h4>Z Score</h4><h2>{z_score}</h2>
+            st.markdown(f"""<div class="metric-container orange-metric"><h4>Z Score</h4><h2>{z_score}</h2>
                         <span class = "tooltip-text">
                         Shows deviation from market average. 0 = average; positive = above market; negative = below.
                         </span>
                         </div>""", unsafe_allow_html=True)
     
         with kc5:
-            st.markdown(f"""<div class="metric-container teal-metric"><h4>Cluster</h4><h2>{cluster}</h2>
+            st.markdown(f"""<div class="metric-container red-metric"><h4>Cluster</h4><h2>{cluster}</h2>
                         <span class = "tooltip-text">
                         Groups regions with similar sales patterns and performance.
                         </span>
                         </div>""", unsafe_allow_html=True)
+            
+        with kc6:
+
+            st.markdown(f"""<div class="metric-container teal-metric"><h4>Target Audience Data</h4><h2>{target_au}</h2>
+                        <span class = "tooltip-text">
+                        Target Audience Data.
+                        </span>
+                        </div>""", unsafe_allow_html=True)
+        
     
         st.markdown("---")
     
@@ -1910,8 +1947,10 @@ def main_app():
 
         territory = st.sidebar.selectbox("Select Territory", territories, key="content_gen_territory")
 
+
         if st.button("Generate LLM JSON"):
             payload = {"brand": brand, "category": category, "territory": territory}
+            st.write(payload)
             result_json = fetch_report("gt_llm_input", payload)
             st.session_state["llm_json_full"] = result_json
             st.success("JSON generated successfully!")
