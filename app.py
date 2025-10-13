@@ -1206,6 +1206,17 @@ def main_app():
             ws_mean = ms_mean = 0
 
         tg_audience = load_target_audience()
+        total_population=tg_audience['targetAudience'].sum()
+        def human_format(num):
+            num = float(num)
+            if num >= 1_000_000_000:
+                return f"{num/1_000_000_000:.1f}B"
+            elif num >= 1_000_000:
+                return f"{num/1_000_000:.1f}M"
+            elif num >= 1_000:
+                return f"{num/1_000:.1f}K"
+            else:
+                return str(int(num))
 
         if tg_audience is not None and not tg_audience.empty:
             mask = pd.Series(True, index=tg_audience.index)
@@ -1219,6 +1230,9 @@ def main_app():
 
             ta_number = tg_audience[mask]
             target_au = ta_number["targetAudience"].sum()
+            target_au_per= (target_au/total_population)*100
+            target_au=human_format(target_au)
+
         else:
             ta_number = pd.DataFrame()
             target_au = 0
@@ -1259,11 +1273,17 @@ def main_app():
             
         with kc6:
 
-            st.markdown(f"""<div class="metric-container teal-metric"><h4>Target Audience Data</h4><h2>{target_au}</h2>
-                        <span class = "tooltip-text">
-                        Target Audience Data.
-                        </span>
-                        </div>""", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div class="metric-container teal-metric">
+                    <h4>Target Audience Data</h4>
+                    <h2>{target_au}</h2>
+                    <span class="tooltip-text">Target Audience Data.</span>
+                    <div style="margin-top: 5px; font-size: 0.9em; color: #ffffffcc;">
+                        {target_au_per:.1f}% of total
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
         
     
         st.markdown("---")
@@ -1480,15 +1500,13 @@ def main_app():
         with right:
           
             dataset_type = data  
-            if category == "All Categories":
-                filtered_data=COMP_DF
-            else:    
+            filtered_data = COMP_DF.copy()
 
-                filtered_data = COMP_DF[
-                    (COMP_DF['category'] == category) & 
-                    (COMP_DF['territory'] == territory)
-                ]
-            
+            if category != "All Categories":
+                filtered_data = filtered_data[filtered_data['category'] == category]
+
+            if territory != "All Markets":
+                filtered_data = filtered_data[filtered_data['territory'] == territory]
             if dataset_type == "MT":
                 filtered_data=filtered_data.groupby('brandName').agg({'totalSales':'sum',
                                                                       "marketShare":'mean',
