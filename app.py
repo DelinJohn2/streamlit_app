@@ -499,13 +499,15 @@ def main_app():
         total_brands = len(agg_data[['brandName','category']].drop_duplicates())
         total_markets = len(agg_data['market'].unique())
        
+
+            
         if data=="MT":
             
             grouped_df = COMP_DF.groupby('brandName')['totalQuantity'].sum().reset_index()
             top_3_sales = grouped_df['totalQuantity'].sort_values(ascending=False).head(3).sum()
             cci = (top_3_sales / grouped_df['totalQuantity'].sum()) * 100
-            tMshare_p = BRAND_DF['totalQuantity'].sum()
-            tMshare_c= COMP_DF['totalQuantity'].sum()
+            tMshare_p = BRAND_DF['quantity'].sum()
+            tMshare_c= COMP_DF['quantity'].sum()
             market_share=(tMshare_p/(tMshare_c+tMshare_c))*100
 
 
