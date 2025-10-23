@@ -1499,267 +1499,180 @@ def main_app():
             st.components.v1.html(html, height=420, scrolling=False)
             
 
+            
         with right:
-          
-            dataset_type = data  
-            filtered_data = COMP_DF.copy()
+    # Choose geo path based on data type
+            if data == 'MT':
+                geo_path = "storage/kenya.geojson"
+                feature_id = "properties.COUNTY_NAM"
+            elif data == 'GT':
+                geo_path = "storage/kenya_territories_lake.geojson"
+                feature_id = "properties.TERRITORY"
 
+            with open(geo_path) as f:
+                geo = json.load(f)
+
+            # Base dataset
+            df = COMP_DF.copy()
             if category != "All Categories":
-                filtered_data = filtered_data[filtered_data['category'] == category]
-
+                df = df[df["category"] == category]
             if territory != "All Markets":
-                filtered_data = filtered_data[filtered_data['territory'] == territory]
-            if dataset_type == "MT":
-                filtered_data=filtered_data.groupby('brandName').agg({'totalSales':'sum',
-                                                                      "marketShare":'mean',
-                                                                      "totalQuantity":'sum'}).reset_index()
-                top_brands = filtered_data.nlargest(5, 'totalSales')
-               
-                METRICS = {
-                    "Total Sales": top_brands['totalSales'].tolist(),
-                    "Market Share": top_brands['marketShare'].tolist(),
-                    "Total Quantity": top_brands['totalQuantity'].tolist()
-                }
-                fig = go.Figure(go.Bar(
-                    x=top_brands['brandName'],
-                    y=METRICS["Total Sales"],
-                    marker_color="#1f77b4"
-                ))
+                df = df[df["territory"] == territory]
+                
+                
+           
+            # Build data per brand
+            brands = (
+                df.groupby("brandName")["marketShare"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(5)  # Take top 5
+                .reset_index()
+            )
+            top_brands = brands["brandName"].tolist()
 
-                fig.update_layout(
-                    
-                    height=500,
-                    width=600
-                )
+            METRICS = {}
 
-                # Convert figure to JSON
-                fig_json = fig.to_json()
-                html = f"""
-                <style>
-            .wrap {{
-                position: relative;
-                height: 400px;
-                border-radius: 16px;
-                overflow: hidden;
-                background: #eef2f7;
-                border: 1px solid #e5e7eb;
-                box-shadow: 0 12px 28px rgba(0,0,0,.08);
-            }}
-            #plotA {{
-                position: absolute;
-                inset: 0;
-            }}
-            .fab {{
-                position: absolute;
-                top: 25px;
-                right: 12px;
-                z-index: 10;
-                width: 44px;
-                height: 44px;
-                border-radius: 50%;
-                border: none;
-                background: #fff;
-                box-shadow: 0 8px 22px rgba(0,0,0,.12);
-                font: 700 18px/44px system-ui, sans-serif;
-                cursor: pointer;
-            }}
-            .menu {{
-                position: absolute;
-                top: 60px;
-                right: 12px;
-                z-index: 11;
-                width: 180px;
-                background: #fff;
-                border-radius: 12px;
-                box-shadow: 0 8px 22px rgba(0,0,0,.12);
-                border: 1px solid #eef0f4;
-                display: none;
-            }}
-            .menu.open {{
-                display: block;
-            }}
-            .menu div {{
-                padding: 10px;
-                cursor: pointer;
-                border-bottom: 1px solid #e5e5e5;
-            }}
-            .menu div:last-child {{
-                border-bottom: none;
-            }}
-            .menu div:hover {{
-                background: #f3f6fb;
-            }}
-        .item{{ padding:10px 14px; cursor:pointer; font:500 14px/1.2 system-ui, sans-serif;}} .item:hover{{ background:#f3f6fb; }}
+            for brand_name in top_brands:
+                subset = df[df["brandName"] == brand_name]
+                brand_metric = subset.groupby("market", as_index=False)["marketShare"].sum()
+                METRICS[brand_name] = brand_metric["marketShare"].tolist()
 
+
+            default_brand = top_brands[0]
+          
+
+            # Build initial map
+            fig = go.Figure(go.Choroplethmapbox(
+                geojson=geo,
+                featureidkey=feature_id,
+                locations=df["market"].unique(),
+                z=METRICS[default_brand],
+                colorscale="Viridis",
+                marker_opacity=0.7,
+                marker_line_width=0.5,
+                text=df["market"].unique(),
+                hovertemplate="<b>%{text}</b><br>Market Share: %{z}<extra></extra>",
+                colorbar=dict(title=f"{default_brand}")
+            ))
+
+            fig.update_layout(
+                mapbox_style="open-street-map",
+                mapbox_center=MAP_CENTER,
+                mapbox_zoom=MAP_ZOOM,
+                height=400,
+                margin=dict(r=0, t=0, l=0, b=0)
+            )
+
+            fig_json = fig.to_json()
+
+            # --- HTML + CSS + JS using your bar chart hamburger styling ---
+            html = f"""
+            <style>
+                .wrap {{
+                    position: relative;
+                    height: 400px;
+                    border-radius: 16px;
+                    overflow: hidden;
+                    background: #eef2f7;
+                    border: 1px solid #e5e7eb;
+                    box-shadow: 0 12px 28px rgba(0,0,0,.08);
+                }}
+                #plotA {{
+                    position: absolute;
+                    inset: 0;
+                }}
+                .fab {{
+                    position: absolute;
+                    top: 25px;
+                    right: 12px;
+                    z-index: 10;
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 50%;
+                    border: none;
+                    background: #fff;
+                    box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                    font: 700 18px/44px system-ui, sans-serif;
+                    cursor: pointer;
+                }}
+                .menu {{
+                    position: absolute;
+                    top: 90px;
+                    right: 12px;
+                    z-index: 11;
+                    width: 180px;
+                    background: #fff;
+                    border-radius: 12px;
+                    box-shadow: 0 8px 22px rgba(0,0,0,.12);
+                    border: 1px solid #eef0f4;
+                    display: none;
+                    overflow-y: auto;
+                    max-height: 150px;
+                }}
+                .menu.open {{
+                    display: block;
+                }}
+                .menu div {{
+                    padding: 10px;
+                    cursor: pointer;
+                    border-bottom: 1px solid #e5e5e5;
+                }}
+                .menu div:last-child {{
+                    border-bottom: none;
+                }}
+                .menu div:hover {{
+                    background: #f3f6fb;
+                }}
+                .item {{
+                    padding:10px 14px;
+                    cursor:pointer;
+                    font:500 14px/1.2 system-ui, sans-serif;
+                }}
+                .item:hover {{
+                    background:#f3f6fb;
+                }}
             </style>
-                
-        <div style="position:relative; height:500px; border-radius:16px; overflow:hidden; background:#fff;">
-            <div id="plotBar" style="position:absolute; inset:0;"></div>
-            <button id="fabBar" style="position:absolute; top:12px; right:12px; z-index:10; width:44px; height:44px; border-radius:50%; border:none;
-                                    background:#fff; box-shadow:0 8px 22px rgba(0,0,0,.12); font:700 18px/44px system-ui,sans-serif; cursor:pointer;">
-                ☰
-            </button>
-            <div id="menuBar" style="position:absolute; top:60px; right:12px; z-index:11; width:180px; background:#fff; border-radius:12px; 
-                                        box-shadow:0 8px 22px rgba(0,0,0,.12); border:1px solid #eef0f4; display:none; overflow-y:auto; max-height:150px;">
-                <div class="item" data-metric="Total Quantity">Total Quantity</div>
-                <div class="item" data-metric="Market Share">Market Share</div>
-                <div class="item" data-metric="Total Sales">Total Sales</div>
+
+            <div style="position:relative; height:400px; border-radius:16px; overflow:hidden; background:#fff; box-shadow:0 12px 28px rgba(0,0,0,0.12);">
+                <div id="plotA" style="position:absolute; inset:0;"></div>
+                <button id="fabA" class="fab">☰</button>
+                <div id="menuA" class="menu">
+                    {''.join([f'<div class="item" data-brand="{b}">{b}</div>' for b in top_brands])}
+                </div>
             </div>
-        </div>
 
-        <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-        <script>
-            const fig = {fig_json};
-            const METRICS = {json.dumps(METRICS)};
-            const div = document.getElementById("plotBar");
+            <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+            <script>
+                const fig = {fig_json};
+                const METRICS = {json.dumps(METRICS)};
+                const div = document.getElementById("plotA");
 
-            Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
+                Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
 
-            const fab = document.getElementById("fabBar");
-            const menu = document.getElementById("menuBar");
+                const fab = document.getElementById("fabA");
+                const menu = document.getElementById("menuA");
 
-            fab.addEventListener("click", () => {{
-                menu.style.display = menu.style.display === "block" ? "none" : "block";
-            }});
-
-            document.querySelectorAll(".item").forEach(el => {{
-                el.addEventListener("click", () => {{
-                    const metric = el.dataset.metric;
-
-                    Plotly.restyle(div, {{y: [METRICS[metric]]}}, [0]);
-                    menu.style.display = "none";
+                fab.addEventListener("click", () => {{
+                    menu.style.display = menu.style.display === "block" ? "none" : "block";
                 }});
-            }});
-        </script>
-        """
 
-                st.components.v1.html(html, height=520, scrolling=False)
-                
-            elif dataset_type == "GT":
-                top_5_brands = filtered_data.dropna().nlargest(5, 'brandTotalVolume')
-                METRICS = {
-                    "Brand Total Volume": top_5_brands['brandTotalVolume'].tolist(),
-                    "Market Share": top_5_brands['marketShare'].tolist(),
-                    "Units Sold": top_5_brands['unitsSold'].tolist()
-                }
-                fig = go.Figure(go.Bar(
-                    x=top_5_brands['brandName'],
-                    y=METRICS["Brand Total Volume"],
-                    marker_color="#1f77b4"
-                ))
-
-                fig.update_layout(
-                    title=f'Top 5 Competitors - {category} ({territory})',
-               
-                    height=500,
-                    width=1000
-                )
-
-                # Convert figure to JSON
-                fig_json = fig.to_json()
-                html = f"""
-                <style>
-            .wrap {{
-                position: relative;
-                height: 400px;
-                border-radius: 16px;
-                overflow: hidden;
-                background: #eef2f7;
-                border: 1px solid #e5e7eb;
-                box-shadow: 0 12px 28px rgba(0,0,0,.08);
-            }}
-            #plotA {{
-                position: absolute;
-                inset: 0;
-            }}
-            .fab {{
-                position: absolute;
-                top: 25px;
-                right: 12px;
-                z-index: 10;
-                width: 44px;
-                height: 44px;
-                border-radius: 50%;
-                border: none;
-                background: #fff;
-                box-shadow: 0 8px 22px rgba(0,0,0,.12);
-                font: 700 18px/44px system-ui, sans-serif;
-                cursor: pointer;
-            }}
-            .menu {{
-                position: absolute;
-                top: 60px;
-                right: 12px;
-                z-index: 11;
-                width: 180px;
-                background: #fff;
-                border-radius: 12px;
-                box-shadow: 0 8px 22px rgba(0,0,0,.12);
-                border: 1px solid #eef0f4;
-                display: none;
-            }}
-            .menu.open {{
-                display: block;
-            }}
-            .menu div {{
-                padding: 10px;
-                cursor: pointer;
-                border-bottom: 1px solid #e5e5e5;
-            }}
-            .menu div:last-child {{
-                border-bottom: none;
-            }}
-            .menu div:hover {{
-                background: #f3f6fb;
-            }}
-        .item{{ padding:10px 14px; cursor:pointer; font:500 14px/1.2 system-ui, sans-serif;}} .item:hover{{ background:#f3f6fb; }}
-
-            </style>
-                
-            <div style="position:relative; height:550px; border-radius:16px; box-shadow: 0 12px 28px rgba(0,0,0,0.12); overflow:hidden; background:#fff;">
-
-            <div id="plotBar" style="position:absolute; inset:0;"></div>
-            <button id="fabBar" style="position:absolute; top:12px; right:12px; z-index:10; width:44px; height:44px; border-radius:50%; border:none;
-                                    background:#fff; box-shadow:0 8px 22px rgba(0,0,0,.12); font:700 18px/44px system-ui,sans-serif; cursor:pointer;">
-                ☰
-            </button>
-            <div id="menuBar" style="position:absolute; top:60px; right:12px; z-index:11; width:180px; background:#fff; border-radius:12px; 
-                                        box-shadow:0 8px 22px rgba(0,0,0,.12); border:1px solid #eef0f4; display:none; overflow-y:auto; max-height:150px;">
-                <div class="item" data-metric="Brand Total Volume">Brand Total Volume</div>
-                <div class="item" data-metric="Market Share">Market Share</div>
-                <div class="item" data-metric="Units Sold">Units Sold</div>
-            </div>
-        </div>
-
-        <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-        <script>
-            const fig = {fig_json};
-            const METRICS = {json.dumps(METRICS)};
-            const div = document.getElementById("plotBar");
-
-            Plotly.newPlot(div, fig.data, fig.layout, {{responsive:true, displayModeBar:false}});
-
-            const fab = document.getElementById("fabBar");
-            const menu = document.getElementById("menuBar");
-
-            fab.addEventListener("click", () => {{
-                menu.style.display = menu.style.display === "block" ? "none" : "block";
-            }});
-
-            document.querySelectorAll(".item").forEach(el => {{
-                el.addEventListener("click", () => {{
-                    const metric = el.dataset.metric;
-
-                    Plotly.restyle(div, {{y: [METRICS[metric]]}}, [0]);
-                    menu.style.display = "none";
+                document.querySelectorAll(".item").forEach(el => {{
+                    el.addEventListener("click", () => {{
+                        const brand = el.dataset.brand;
+                        Plotly.restyle(div, {{
+                            z: [METRICS[brand]],
+                            'colorbar.title.text': brand
+                        }}, [0]);
+                        menu.style.display = "none";
+                    }});
                 }});
-            }});
-        </script>
-        """
+            </script>
+            """
 
-                st.components.v1.html(html, height=520, scrolling=False)
-
-    
+            st.components.v1.html(html, height=480, scrolling=False)
+            
+            
         st.markdown("---")
     
         st.subheader("Detailed Brand Data")
