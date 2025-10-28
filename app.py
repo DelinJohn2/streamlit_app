@@ -330,7 +330,7 @@ def main_app():
             visibility: hidden;
             width: 220px;
             background-color: #333;
-            color: #fff;
+            color: #000;
             text-align: center;
             border-radius: 6px;
             padding: 8px;
@@ -1208,7 +1208,7 @@ def main_app():
             ws_mean = ms_mean = 0
 
         tg_audience = load_target_audience()
-        total_population=tg_audience['targetAudience'].sum()
+
         def human_format(num):
             num = float(num)
             if num >= 1_000_000_000:
@@ -1231,13 +1231,26 @@ def main_app():
                 mask &= tg_audience["brandName"] == brand
 
             ta_number = tg_audience[mask]
-            target_au = ta_number["targetAudience"].sum()
-            target_au_per= (target_au/total_population)*100
-            target_au=human_format(target_au)
+
+            # Step 1 & 2: Average population by market
+            avg_population_per_market = ta_number.groupby("market")["provincePopulation"].mean()
+
+
+            # Step 3: Sum of averages
+            sum_avg_population = avg_population_per_market.sum()
+  
+
+            # Step 4: Mean percent
+            mean_percent = ta_number["percentOfProvince"].mean() / 100  # convert % to decimal
+
+            # Step 5: Final target audience
+            target_au = sum_avg_population * mean_percent
+            target_au = human_format(target_au)
 
         else:
             ta_number = pd.DataFrame()
             target_au = 0
+
         
         kc1, kc2, kc3, kc4, kc5,kc6 = st.columns(6)
         with kc1:
@@ -1280,9 +1293,7 @@ def main_app():
                     <h4>Target Audience Data</h4>
                     <h2>{target_au}</h2>
                     <span class="tooltip-text">Target Audience Data.</span>
-                    <div style="margin-top: 5px; font-size: 0.9em; color: #ffffffcc;">
-                        {target_au_per:.1f}% of total
-                    </div>
+                
                 </div>
                 """, unsafe_allow_html=True)
 
