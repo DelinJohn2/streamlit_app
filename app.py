@@ -1546,7 +1546,7 @@ def main_app():
             # Build data per brand
             brands = (
                 df.groupby("brandName")["marketShare"]
-                .sum()
+                .mean()
                 .sort_values(ascending=False)
                 .head(5)  # Take top 5
                 .reset_index()
@@ -1557,7 +1557,7 @@ def main_app():
 
             for brand_name in top_brands:
                 subset = df[df["brandName"] == brand_name]
-                brand_metric = subset.groupby("market", as_index=False)["marketShare"].sum()
+                brand_metric = subset.groupby("market", as_index=False)["marketShare"].mean()
                 METRICS[brand_name] = brand_metric["marketShare"].tolist()
 
 
