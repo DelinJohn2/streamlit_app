@@ -1197,7 +1197,7 @@ def main_app():
             if pd.isna(ws_mean):
                 ws_mean = BRAND_DF['whiteSpaceScore'].mean() 
             
-            ms_mean = filtered_df.groupby('county').agg({'marketShare':'mean'})['marketShare'].mean()
+            ms_mean = filtered_df.groupby('market').agg({'marketShare':'mean'})['marketShare'].mean()
    
             ped = filtered_df['ped'].mean().round(2)
             z_score= filtered_df['brandZVol'].mean().round(2)
