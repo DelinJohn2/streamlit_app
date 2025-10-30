@@ -1197,7 +1197,7 @@ def main_app():
             if pd.isna(ws_mean):
                 ws_mean = BRAND_DF['whiteSpaceScore'].mean() 
             
-            ms_mean = filtered_df['marketShare'].mean()
+            ms_mean = filtered_df.groupby('county').agg({'marketShare':'mean'})['marketShare'].mean()
    
             ped = filtered_df['ped'].mean().round(2)
             z_score= filtered_df['brandZVol'].mean().round(2)
@@ -1209,8 +1209,18 @@ def main_app():
 
         tg_audience = load_target_audience()
 
+        import math
+
         def human_format(num):
-            num = float(num)
+            # Handle None or NaN
+            if num is None or (isinstance(num, float) and math.isnan(num)):
+                return "N/A"
+
+            try:
+                num = float(num)
+            except (ValueError, TypeError):
+                return "N/A"
+
             if num >= 1_000_000_000:
                 return f"{num/1_000_000_000:.1f}B"
             elif num >= 1_000_000:
@@ -1218,7 +1228,8 @@ def main_app():
             elif num >= 1_000:
                 return f"{num/1_000:.1f}K"
             else:
-                return str(int(num))
+                return f"{num:.0f}"
+
 
         if tg_audience is not None and not tg_audience.empty:
             mask = pd.Series(True, index=tg_audience.index)
