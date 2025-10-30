@@ -14,24 +14,23 @@ engine = create_engine(engine_name)
 class DataReaderMt:
 
     def read_mt_pwani_data(self):
-        # Calculate the cutoff date (4 months ago)
-        cutoff_date = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
-        
+        current_year = datetime.now().year
+
         query = f"""
             SELECT *
             FROM pwani_marketing.mt_pwani_data_cleaned
-            WHERE date >= '{cutoff_date}'
+            WHERE YEAR(date) = {current_year}
         """
         data = pd.read_sql_query(query, engine)
         return data
 
     def read_mt_competitor_data(self):
-        cutoff_date = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
+        current_year = datetime.now().year
 
         query = f"""
             SELECT *
             FROM pwani_marketing.mt_competitor_data_cleaned
-            WHERE date >= '{cutoff_date}'
+            WHERE YEAR(date) = {current_year}
         """
         df = pd.read_sql_query(query, engine)
         return df
