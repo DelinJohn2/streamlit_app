@@ -508,16 +508,16 @@ def main_app():
             cci = (top_3_sales / grouped_df['totalQuantity'].sum()) * 100
             tMshare_p = BRAND_DF['quantity'].sum()
             tMshare_c= COMP_DF['quantity'].sum()
-            market_share=(tMshare_p/(tMshare_c+tMshare_c))*100
+            market_share=(tMshare_p/(tMshare_c+tMshare_p))*100
 
 
         elif data =="GT":
             grouped_df = COMP_DF.groupby('brandName')['brandTotalVolume'].sum().reset_index()
             top_3_sales = grouped_df['brandTotalVolume'].sort_values(ascending=False).head(3).sum()
             cci = (top_3_sales / grouped_df['brandTotalVolume'].sum()) * 100
-            tMshare_p = BRAND_DF['brandTotalVolume'].sum()
-            tMshare_c= COMP_DF['brandTotalVolume'].sum()
-            market_share=(tMshare_p/(tMshare_c+tMshare_c))*100
+            tMshare_p = sum(BRAND_DF['brandTotalVolume'].unique())
+            tMshare_c= sum(COMP_DF['brandTotalVolume'].unique())
+            market_share=(tMshare_p/(tMshare_c+tMshare_p))*100
                 
 
         c1, c2, c3 = st.columns(3)
@@ -1175,20 +1175,30 @@ def main_app():
         st.title("Market Discovery Dashboard")
       
     
+# --- Base copies ---
         filtered_df = BRAND_DF.copy()
+        filtered_c_df = COMP_DF.copy()
+
+        # --- Apply filters (category and market for both; brand only for Pwani) ---
         if not (
             category == "All Categories"
             and brand == "All Brands"
             and territory == "All Markets"
         ):
+            # Filter both datasets by category (if selected)
             if category != "All Categories":
                 filtered_df = filtered_df[filtered_df["category"] == category]
-            if brand != "All Brands":
-                filtered_df = filtered_df[filtered_df["brandName"] == brand]
+                filtered_c_df = filtered_c_df[filtered_c_df["category"] == category]
+
+            # Filter both datasets by territory/market (if selected)
             if territory != "All Markets":
                 filtered_df = filtered_df[filtered_df["territory"] == territory]
+                filtered_c_df = filtered_c_df[filtered_c_df["territory"] == territory]
 
-    
+            # ❗ Filter by brand **only** for Pwani data (not for competitors)
+            if brand != "All Brands":
+                filtered_df = filtered_df[filtered_df["brandName"] == brand]
+
         st.subheader("Filtered Performance Indicators")
     
         if not filtered_df.empty:
@@ -1196,16 +1206,33 @@ def main_app():
 
             if pd.isna(ws_mean):
                 ws_mean = BRAND_DF['whiteSpaceScore'].mean() 
+        if data=="MT":
             
-            ms_mean = filtered_df.groupby('market').agg({'marketShare':'mean'})['marketShare'].mean()
-   
-            ped = filtered_df['ped'].mean().round(2)
-            z_score= filtered_df['brandZVol'].mean().round(2)
-            cluster = filtered_df['cluster'].iloc[0]  # first value
-            cluster = cluster.split("|")[0] if "|" in cluster else cluster
+            
+            tMshare_p = filtered_df['quantity'].sum()
+            tMshare_c= filtered_c_df['quantity'].sum()
+            market_share=(tMshare_p/(tMshare_c+tMshare_p))*100
 
-        else:
-            ws_mean = ms_mean = 0
+
+        elif data =="GT":
+            
+            tMshare_p = sum(filtered_df['brandTotalVolume'].unique())
+            tMshare_c= sum(filtered_c_df['brandTotalVolume'].unique())
+            market_share=(tMshare_p/(tMshare_c+tMshare_p))*100
+                
+                
+            
+            
+
+        
+
+   
+        ped = filtered_df['ped'].mean().round(2)
+        z_score= filtered_df['brandZVol'].mean().round(2)
+        cluster = filtered_df['cluster'].iloc[0]  # first value
+        cluster = cluster.split("|")[0] if "|" in cluster else cluster
+
+        
 
         tg_audience = load_target_audience()
 
@@ -1272,7 +1299,7 @@ def main_app():
                         </div>
                         """, unsafe_allow_html=True)
         with kc2:
-            st.markdown(f"""<div class="metric-container purple-metric"><h4>Market Share</h4><h2>{ms_mean:.1f}%</h2>
+            st.markdown(f"""<div class="metric-container purple-metric"><h4>Market Share</h4><h2>{market_share:.1f}%</h2>
                         <span class="tooltip-text">
                         Percentage of total market sales captured by your brand.
                         </span>
