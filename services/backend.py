@@ -3,9 +3,12 @@ import time
 from datetime import datetime
 import streamlit as st
 from utils import base64_to_image,parse_json_payload
+from config import load_base_ip
+
+base_ip=load_base_ip()
 
 def fetch_report(api_mapper: str, payload: dict, output_file: str = None):
-    base_ip= "34.0.149.91"
+    
 
     apis = {
         "mt_executive_summary": f"http://{base_ip}:8001/api/mt/executive_summary",
