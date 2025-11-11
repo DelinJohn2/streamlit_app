@@ -1,4 +1,4 @@
-
+from sqlmodel import create_engine
 
 from dotenv import load_dotenv
 import os
@@ -23,6 +23,12 @@ def load_engine():
     DB_NAME = os.getenv('DB_NAME')
 
 # Create SQLAlchemy engine
-    engine = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    engine = create_engine(
+        f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
+        pool_pre_ping=True,          # ✅ Checks if connection is alive before use
+        pool_recycle=1800,           # ✅ Prevents MySQL timeout issues
+        pool_size=10,                # ✅ Safe pool size
+        max_overflow=5,              # ✅ Allow some burst connections
+    )
     return engine
 

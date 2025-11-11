@@ -1,12 +1,12 @@
 import pandas as pd
 from config import load_engine
-from sqlmodel import create_engine
+
 
 
 
 # --- DB Engine ---
-engine_name = load_engine()
-engine = create_engine(engine_name)
+engine = load_engine()
+
 
 
 

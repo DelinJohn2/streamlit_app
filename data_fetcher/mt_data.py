@@ -6,8 +6,7 @@ from datetime import datetime, timedelta
 
 
 # --- DB Engine ---
-engine_name = load_engine()
-engine = create_engine(engine_name)
+engine=load_engine()
 
 
 
