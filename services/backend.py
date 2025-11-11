@@ -42,7 +42,7 @@ def run_backend_sync(payload: dict, image_location: str = "", max_retries: int =
    
     output_type, image_prompt, text_prompt, product_data = parse_json_payload(payload)
     start_time = datetime.now()
-    base_ip="34.0.149.91"
+    
 
     
     backend_map= {
